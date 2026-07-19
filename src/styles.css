@@ -217,7 +217,10 @@ dialog textarea { width: 100%; background: var(--btn); color: var(--text); borde
 .chip-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 16px; }
 .chip { border: none; border-radius: 9px; padding: 10px 6px; background: var(--btn); color: var(--text); cursor: pointer; font-size: 12px; box-shadow: 2px 2px 5px var(--inset), -2px -2px 5px var(--btn-hi); }
 .chip:hover { color: var(--accent); }
+.chip.active { color: var(--accent); background: var(--accent-tint); box-shadow: inset 2px 2px 4px var(--inset), 0 0 0 1px var(--accent); }
 #filters-dialog, #effects-dialog { width: 340px; }
-#ai-dialog { width: 380px; }
+#ai-dialog { width: 380px; max-height: 90vh; overflow-y: auto; }
+#ai-styles { grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 12px; }
+#ai-styles .chip { padding: 7px 3px; font-size: 11px; }
 #ai-dialog .row input[type="password"], #ai-dialog .row input[type="text"], #ai-dialog .row select { width: 230px; }
 .ai-status { font-size: 12px; color: var(--text-dim); min-height: 16px; margin: 6px 2px 0; }

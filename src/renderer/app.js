@@ -1039,6 +1039,24 @@ const AI_DEFAULT_MODEL = {
   replicate: 'black-forest-labs/flux-schnell'
 };
 const COMFY_DEFAULT_URL = 'http://127.0.0.1:8188';
+// Style presets: prompt keywords + negative + preferred local checkpoint
+const REALISTIC_MODEL = 'Juggernaut_XL_Lightning.safetensors';
+const ART_MODEL = 'DreamShaper_8_pruned.safetensors';
+const AI_STYLES = {
+  none:       { pos: '', neg: '', model: null },
+  realistic:  { pos: 'photorealistic, ultra detailed, sharp focus, DSLR photo, natural lighting, 8k', neg: 'cartoon, anime, illustration, painting, cgi, drawing', model: REALISTIC_MODEL },
+  game3d:     { pos: '3D render, game asset, unreal engine 5, octane render, physically based rendering, high detail, volumetric lighting', neg: 'flat, 2d, sketch, line art', model: REALISTIC_MODEL },
+  digital:    { pos: 'digital painting, concept art, trending on artstation, highly detailed, dramatic lighting', neg: 'photo, lowres, blurry', model: ART_MODEL },
+  anime:      { pos: 'anime style, cel shaded, vibrant colors, key visual, studio anime, clean lines', neg: 'photo, realistic, 3d render', model: ART_MODEL },
+  watercolor: { pos: 'watercolor painting, soft color washes, textured paper, traditional media, delicate', neg: '3d, photo, digital, hard edges', model: ART_MODEL },
+  cartoon:    { pos: 'cartoon style, bold outlines, flat vivid colors, playful, vector illustration', neg: 'photo, realistic, gritty, noise', model: ART_MODEL },
+  pixel:      { pos: 'pixel art, 16-bit, retro game sprite, limited palette, crisp pixels', neg: 'smooth, photo, blurry, 3d, antialiased', model: ART_MODEL },
+  fantasy:    { pos: 'epic fantasy concept art, magical atmosphere, cinematic, detailed environment, dramatic', neg: 'modern, mundane, lowres', model: ART_MODEL },
+  oil:        { pos: 'oil painting, thick visible brush strokes, classical, canvas texture, rich colors', neg: 'photo, 3d, digital, flat', model: ART_MODEL },
+  cyberpunk:  { pos: 'cyberpunk, neon lights, futuristic city, moody, cinematic, high contrast', neg: 'daylight, rural, vintage', model: REALISTIC_MODEL },
+  lineart:    { pos: 'clean line art, black and white ink drawing, bold clean lines, minimal shading', neg: 'color, photo, 3d, painterly', model: ART_MODEL }
+};
+let selectedStyle = 'none';
 function fillAiFields(prov) {
   const isLocal = prov === 'comfyui';
   $('#ai-key-label').textContent = isLocal ? 'Server' : 'API Key';
@@ -1071,19 +1089,23 @@ async function aiGenerate() {
   saveAiSettings();
   const provider = $('#ai-provider').value;
   const key = $('#ai-key').value.trim();
-  const model = $('#ai-model').value.trim() || AI_DEFAULT_MODEL[provider];
-  const prompt = $('#ai-prompt').value.trim();
+  const style = AI_STYLES[selectedStyle] || AI_STYLES.none;
+  const userModel = $('#ai-model').value.trim();
+  const model = userModel || (provider === 'comfyui' && style.model ? style.model : AI_DEFAULT_MODEL[provider]);
+  const rawPrompt = $('#ai-prompt').value.trim();
+  const prompt = [rawPrompt, style.pos].filter(Boolean).join(', ');
+  const negative = [style.neg, 'lowres, bad anatomy, blurry, watermark, text'].filter(Boolean).join(', ');
   const status = $('#ai-status');
-  if (!key) { status.textContent = 'Enter your API key first.'; return; }
-  if (!prompt) { status.textContent = 'Enter a prompt.'; return; }
+  if (!key) { status.textContent = provider === 'comfyui' ? 'Enter the ComfyUI server URL.' : 'Enter your API key first.'; return; }
+  if (!prompt) { status.textContent = 'Enter a prompt or pick a style.'; return; }
   if (!window.inkforge?.aiGenerate) { status.textContent = 'AI generation only runs in the desktop app.'; return; }
   const useDraw = $('#ai-usedraw').checked;
   const strength = (+$('#ai-strength').value || 70) / 100;
   const initImage = useDraw ? flattenCanvasDataUrl().replace(/^data:image\/png;base64,/, '') : null;
-  status.textContent = (useDraw ? 'Generating from your drawing… ' : 'Generating… ') + 'this can take 10-40s.';
+  status.textContent = (useDraw ? 'Generating from your drawing… ' : 'Generating… ') + 'up to a minute or two (the first run loads the model).';
   $('#ai-generate').disabled = true;
   try {
-    const res = await window.inkforge.aiGenerate({ provider, key, model, prompt, initImage, strength });
+    const res = await window.inkforge.aiGenerate({ provider, key, model, prompt, initImage, strength, negative });
     if (!res || res.error) { status.textContent = 'Error: ' + (res?.error || 'no response'); return; }
     await placeAiImage('data:' + (res.mime || 'image/png') + ';base64,' + res.image);
     status.textContent = 'Done ✓ added as a new layer.';
@@ -1093,16 +1115,20 @@ async function aiGenerate() {
     $('#ai-generate').disabled = false;
   }
 }
-// Flatten all visible layers onto an opaque white canvas (init image for img2img)
-function flattenCanvasDataUrl() {
+// Flatten visible layers onto opaque white, downscaled to an SD-friendly size
+// (long side <= maxDim, multiples of 8) so img2img stays fast and within GPU VRAM
+function flattenCanvasDataUrl(maxDim = 896) {
+  const scale = Math.min(1, maxDim / Math.max(doc.width, doc.height));
+  const w = Math.max(8, Math.round(doc.width * scale / 8) * 8);
+  const h = Math.max(8, Math.round(doc.height * scale / 8) * 8);
   const out = document.createElement('canvas');
-  out.width = doc.width; out.height = doc.height;
+  out.width = w; out.height = h;
   const octx = out.getContext('2d');
-  octx.fillStyle = '#ffffff'; octx.fillRect(0, 0, out.width, out.height);
+  octx.fillStyle = '#ffffff'; octx.fillRect(0, 0, w, h);
   for (const l of doc.layers) {
     if (!l.visible || l.opacity <= 0) continue;
     octx.globalAlpha = l.opacity; octx.globalCompositeOperation = l.blend;
-    octx.drawImage(l.canvas, 0, 0);
+    octx.drawImage(l.canvas, 0, 0, w, h);
   }
   return out.toDataURL('image/png');
 }
@@ -1411,6 +1437,10 @@ function bindUI() {
   $('#ai-model').addEventListener('change', saveAiSettings);
   $('#ai-generate').addEventListener('click', aiGenerate);
   $('#ai-strength').addEventListener('input', e => $('#ai-strength-val').textContent = e.target.value);
+  document.querySelectorAll('#ai-styles .chip').forEach(ch => ch.addEventListener('click', () => {
+    selectedStyle = ch.dataset.style;
+    document.querySelectorAll('#ai-styles .chip').forEach(x => x.classList.toggle('active', x === ch));
+  }));
 
   $('#layer-opacity').addEventListener('input', e => {
     doc.layer.opacity = +e.target.value / 100;

@@ -266,6 +266,21 @@
       <div class="row"><label id="ai-key-label">API Key</label><input type="password" id="ai-key" placeholder="paste your key (saved locally)" /></div>
       <div class="row"><label id="ai-model-label">Model</label><input type="text" id="ai-model" placeholder="(default)" /></div>
       <div class="row full"><textarea id="ai-prompt" rows="3" placeholder="Describe the image to generate…"></textarea></div>
+      <div class="mini-head" style="margin:2px 0 6px;">STYLE</div>
+      <div class="chip-grid" id="ai-styles">
+        <button type="button" class="chip active" data-style="none">None</button>
+        <button type="button" class="chip" data-style="realistic">Realistic</button>
+        <button type="button" class="chip" data-style="game3d">3D Game</button>
+        <button type="button" class="chip" data-style="digital">Digital Art</button>
+        <button type="button" class="chip" data-style="anime">Anime</button>
+        <button type="button" class="chip" data-style="watercolor">Watercolor</button>
+        <button type="button" class="chip" data-style="cartoon">Cartoon</button>
+        <button type="button" class="chip" data-style="pixel">Pixel Art</button>
+        <button type="button" class="chip" data-style="fantasy">Fantasy</button>
+        <button type="button" class="chip" data-style="oil">Oil Paint</button>
+        <button type="button" class="chip" data-style="cyberpunk">Cyberpunk</button>
+        <button type="button" class="chip" data-style="lineart">Line Art</button>
+      </div>
       <div class="row"><label><input type="checkbox" id="ai-usedraw" checked /> Use my drawing (img2img)</label></div>
       <div class="row"><label>Strength <span id="ai-strength-val">70</span>% <span class="dim">keep ← → transform</span></label>
         <input type="range" id="ai-strength" min="20" max="100" value="70" /></div>

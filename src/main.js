@@ -151,7 +151,7 @@ async function replicateGenerate(key, model, prompt) {
 }
 
 // Local ComfyUI (Stable Diffusion) — txt2img, or img2img when an init image is supplied
-async function comfyuiGenerate(serverUrl, model, prompt, initImage, strength) {
+async function comfyuiGenerate(serverUrl, model, prompt, initImage, strength, negative) {
   const base = (serverUrl || 'http://127.0.0.1:8188').replace(/\/+$/, '');
   const ckpt = model || 'DreamShaper_8_pruned.safetensors';
   const low = ckpt.toLowerCase();
@@ -160,6 +160,7 @@ async function comfyuiGenerate(serverUrl, model, prompt, initImage, strength) {
   else if (low.includes('xl')) { steps = 25; cfg = 6; w = 1024; h = 1024; }
   const seed = Math.floor(Math.random() * 1e15);
   const denoise = initImage ? Math.min(1, Math.max(0.2, strength || 0.7)) : 1;
+  const neg = negative || 'lowres, bad anatomy, blurry, watermark, text';
 
   let wf;
   if (initImage) {
@@ -180,7 +181,7 @@ async function comfyuiGenerate(serverUrl, model, prompt, initImage, strength) {
       "3": { class_type: "KSampler", inputs: { seed, steps, cfg, sampler_name: sampler, scheduler: sched, denoise, model: ["4", 0], positive: ["6", 0], negative: ["7", 0], latent_image: ["10", 0] } },
       "4": { class_type: "CheckpointLoaderSimple", inputs: { ckpt_name: ckpt } },
       "6": { class_type: "CLIPTextEncode", inputs: { text: prompt, clip: ["4", 1] } },
-      "7": { class_type: "CLIPTextEncode", inputs: { text: "lowres, bad anatomy, blurry, watermark, text", clip: ["4", 1] } },
+      "7": { class_type: "CLIPTextEncode", inputs: { text: neg, clip: ["4", 1] } },
       "8": { class_type: "VAEDecode", inputs: { samples: ["3", 0], vae: ["4", 2] } },
       "9": { class_type: "SaveImage", inputs: { filename_prefix: "InkForge", images: ["8", 0] } },
       "10": { class_type: "VAEEncode", inputs: { pixels: ["11", 0], vae: ["4", 2] } },
@@ -192,7 +193,7 @@ async function comfyuiGenerate(serverUrl, model, prompt, initImage, strength) {
       "4": { class_type: "CheckpointLoaderSimple", inputs: { ckpt_name: ckpt } },
       "5": { class_type: "EmptyLatentImage", inputs: { width: w, height: h, batch_size: 1 } },
       "6": { class_type: "CLIPTextEncode", inputs: { text: prompt, clip: ["4", 1] } },
-      "7": { class_type: "CLIPTextEncode", inputs: { text: "lowres, bad anatomy, blurry, watermark, text", clip: ["4", 1] } },
+      "7": { class_type: "CLIPTextEncode", inputs: { text: neg, clip: ["4", 1] } },
       "8": { class_type: "VAEDecode", inputs: { samples: ["3", 0], vae: ["4", 2] } },
       "9": { class_type: "SaveImage", inputs: { filename_prefix: "InkForge", images: ["8", 0] } }
     };
@@ -229,11 +230,11 @@ async function comfyuiGenerate(serverUrl, model, prompt, initImage, strength) {
   return { error: 'Timed out waiting for ComfyUI (generation took too long).' };
 }
 
-ipcMain.handle('ai-generate', async (_evt, { provider, key, model, prompt, initImage, strength }) => {
+ipcMain.handle('ai-generate', async (_evt, { provider, key, model, prompt, initImage, strength, negative }) => {
   try {
     if (provider === 'gemini') return await geminiGenerate(key, model, prompt, initImage);
     if (provider === 'replicate') return await replicateGenerate(key, model, prompt);
-    if (provider === 'comfyui') return await comfyuiGenerate(key, model, prompt, initImage, strength);
+    if (provider === 'comfyui') return await comfyuiGenerate(key, model, prompt, initImage, strength, negative);
     return { error: 'Unknown provider' };
   } catch (err) {
     return { error: String(err && err.message ? err.message : err) };

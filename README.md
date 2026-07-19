@@ -58,4 +58,13 @@ Open **AI ✦** and pick a provider:
   graph, queues it, and drops the result on a new layer.
 - **Google Gemini / Replicate** — bring your own key (stored locally, never bundled).
 
+**Style presets** — one-click looks (Realistic, 3D Game, Digital Art, Anime, Watercolor,
+Cartoon, Pixel Art, Fantasy, Oil Paint, Cyberpunk, Line Art). Each injects tuned
+prompt/negative keywords and, for ComfyUI, auto-picks the best installed checkpoint
+(Juggernaut XL for realistic/3D, DreamShaper for art styles).
+
+**img2img** — "Use my drawing" (on by default) sends your sketch as the starting point;
+the Strength slider controls how much the AI transforms it. The drawing is downscaled
+to a GPU-friendly size before generation.
+
 All calls route through the app's main process, so there are no browser CORS issues.
