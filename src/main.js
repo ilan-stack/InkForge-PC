@@ -2,6 +2,10 @@ const { app, BrowserWindow, ipcMain, dialog, Menu } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
+// 2D canvas paint apps are more reliable with software compositing; this avoids
+// intermittent GPU canvas-blanking seen on some Windows/Intel/AMD driver combos.
+app.disableHardwareAcceleration();
+
 let mainWindow;
 
 function createWindow() {

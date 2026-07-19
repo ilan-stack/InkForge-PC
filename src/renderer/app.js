@@ -10,7 +10,7 @@ class Layer {
     this.canvas = document.createElement('canvas');
     this.canvas.width = w;
     this.canvas.height = h;
-    this.ctx = this.canvas.getContext('2d');
+    this.ctx = this.canvas.getContext('2d', { willReadFrequently: true });
     this.name = name;
     this.visible = true;
     this.opacity = 1;
@@ -53,7 +53,7 @@ const history = {
 
 // ---------------------------------------------------------------- Viewport
 const view = $('#view');
-const vctx = view.getContext('2d');
+const vctx = view.getContext('2d', { willReadFrequently: true });
 const wrap = $('#canvas-wrap');
 const stage = $('#stage');
 const cam = { x: 0, y: 0, scale: 1 };
@@ -94,7 +94,7 @@ function composite() {
 
 // ---------------------------------------------------------------- Brush engine
 const brush = {
-  color: '#e8e8ea',
+  color: '#1a1a1a',
   size: 12,
   opacity: 1,
   hardness: 0.8,
@@ -106,13 +106,12 @@ function hexToRgb(hex) {
   return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
 }
 
-// Build a soft round stamp for a given radius/color/hardness
-function makeStamp(radius, rgb, hardness) {
-  const d = Math.max(1, Math.ceil(radius * 2));
+// Build a soft round brush tip once (fixed resolution); scaled per-stamp via drawImage
+function makeStampTip(size, rgb, hardness) {
   const c = document.createElement('canvas');
-  c.width = c.height = d;
+  c.width = c.height = size;
   const cx = c.getContext('2d');
-  const r = d / 2;
+  const r = size / 2;
   const grad = cx.createRadialGradient(r, r, r * hardness, r, r, r);
   grad.addColorStop(0, `rgba(${rgb.r},${rgb.g},${rgb.b},1)`);
   grad.addColorStop(1, `rgba(${rgb.r},${rgb.g},${rgb.b},0)`);
@@ -135,11 +134,12 @@ class Stroke {
     this.ctx.globalCompositeOperation =
       tool === 'eraser' ? 'destination-out' : 'source-over';
     this.ctx.globalAlpha = brush.opacity;
+    // build the soft tip once for this stroke (128px), scaled per stamp
+    this.tip = makeStampTip(128, this.rgb, brush.hardness);
   }
   _stampAt(x, y, pressure) {
     const radius = Math.max(0.5, (brush.size / 2) * (brush.usePressure ? (0.15 + pressure * 0.85) : 1));
-    const stamp = makeStamp(radius, this.rgb, brush.hardness);
-    this.ctx.drawImage(stamp, x - radius, y - radius, radius * 2, radius * 2);
+    this.ctx.drawImage(this.tip, x - radius, y - radius, radius * 2, radius * 2);
     return radius;
   }
   to(x, y, pressure) {
@@ -407,7 +407,7 @@ async function exportPng() {
   // flatten to a temp canvas
   const out = document.createElement('canvas');
   out.width = doc.width; out.height = doc.height;
-  const octx = out.getContext('2d');
+  const octx = out.getContext('2d', { willReadFrequently: true });
   for (const l of doc.layers) {
     if (!l.visible || l.opacity <= 0) continue;
     octx.globalAlpha = l.opacity; octx.globalCompositeOperation = l.blend;

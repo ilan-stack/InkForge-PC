@@ -1,7 +1,7 @@
 {
   "name": "inkforge",
   "productName": "InkForge",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "InkForge - cross-platform drawing app (Windows/Mac/Linux)",
   "main": "src/main.js",
   "author": "Ilan Lenzner",
@@ -29,7 +29,12 @@
     ],
     "win": {
       "target": [
-        { "target": "nsis", "arch": ["x64"] }
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
       ],
       "artifactName": "InkForge-Setup-${version}.${ext}"
     },
@@ -39,11 +44,15 @@
       "createDesktopShortcut": true
     },
     "mac": {
-      "target": ["dmg"],
+      "target": [
+        "dmg"
+      ],
       "category": "public.app-category.graphics-design"
     },
     "linux": {
-      "target": ["AppImage"],
+      "target": [
+        "AppImage"
+      ],
       "category": "Graphics"
     }
   }
