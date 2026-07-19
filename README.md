@@ -19,6 +19,9 @@ This is a ground-up port of the macOS-native (AppKit/CoreGraphics) InkForge, whi
 - Brush presets: Pencil, Ink Pen, Marker, Airbrush, Soft Round
 - **AI image generation** (Google Gemini / Replicate) - paste your own key in-app, generate from a prompt onto a new layer
 - Save / Open native `.inkforge` project files (all frames + layers preserved); PNG export
+- **Control knobs**: Rotate (real canvas rotation), Zoom, Size - drag to adjust, double-click to reset
+- **Color panel**: HSB color wheel (hue ring + saturation/brightness square), H/S/B sliders, hex input, recent colors, and harmony swatches (Complementary / Analogous / Triad / Split)
+- **Layer ops**: add, duplicate, merge-down, move up/down, delete
 - Pan (space-drag / middle-mouse) and cursor-anchored zoom (wheel), undo / redo
 - Neumorphic dark UI; `touch-action: none` so pen/touch never gets hijacked as a gesture
 

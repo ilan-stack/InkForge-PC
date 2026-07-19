@@ -88,12 +88,22 @@
       <div id="cursor-ring"></div>
     </main>
 
-    <!-- Right layers panel -->
+    <!-- Right sidebar: knobs + layers + color -->
     <aside id="layers-panel">
+      <div id="knobs">
+        <div class="knob" data-knob="rotate"><div class="dial"><span class="dial-ind"></span><span class="dial-val">0°</span></div><label>Rotate</label></div>
+        <div class="knob" data-knob="zoom"><div class="dial"><span class="dial-ind"></span><span class="dial-val">100%</span></div><label>Zoom</label></div>
+        <div class="knob" data-knob="size"><div class="dial"><span class="dial-ind"></span><span class="dial-val">12</span></div><label>Size</label></div>
+      </div>
+
       <div class="panel-head">
         <span>Layers</span>
         <div class="panel-actions">
           <button id="btn-add-layer" title="Add layer">＋</button>
+          <button id="btn-dup-layer" title="Duplicate layer">⎘</button>
+          <button id="btn-merge-layer" title="Merge down">⤵</button>
+          <button id="btn-up-layer" title="Move up">▲</button>
+          <button id="btn-down-layer" title="Move down">▼</button>
           <button id="btn-del-layer" title="Delete layer">🗑</button>
         </div>
       </div>
@@ -117,6 +127,25 @@
         </select>
       </div>
       <ul id="layer-list"></ul>
+
+      <div id="color-panel">
+        <div class="panel-head"><span>Color</span></div>
+        <canvas id="color-wheel" width="220" height="220"></canvas>
+        <div class="hsb-row"><span>H</span><input type="range" id="hsb-h" min="0" max="360" value="0" /><span id="hsb-h-val">0</span></div>
+        <div class="hsb-row"><span>S</span><input type="range" id="hsb-s" min="0" max="100" value="0" /><span id="hsb-s-val">0</span></div>
+        <div class="hsb-row"><span>B</span><input type="range" id="hsb-b" min="0" max="100" value="0" /><span id="hsb-b-val">0</span></div>
+        <div class="hex-row"><span>#</span><input type="text" id="hex" value="1a1a1a" maxlength="6" /><span class="swatch" id="cur-swatch"></span></div>
+        <div class="mini-head">RECENT</div>
+        <div id="recent" class="swatch-grid"></div>
+        <div class="mini-head">HARMONY</div>
+        <div class="harmony-btns">
+          <button class="hbtn" data-harm="comp">Comp</button>
+          <button class="hbtn" data-harm="analog">Analog</button>
+          <button class="hbtn" data-harm="triad">Triad</button>
+          <button class="hbtn" data-harm="split">Split</button>
+        </div>
+        <div id="harmony" class="swatch-grid"></div>
+      </div>
     </aside>
 
     <section id="timeline" class="hidden">

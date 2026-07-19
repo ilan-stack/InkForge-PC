@@ -60,26 +60,32 @@ const view = $('#view');
 const vctx = view.getContext('2d', { willReadFrequently: true });
 const wrap = $('#canvas-wrap');
 const stage = $('#stage');
-const cam = { x: 0, y: 0, scale: 1 };
+const cam = { x: 0, y: 0, scale: 1, rot: 0 };  // rot in degrees
 
 function applyCam() {
-  wrap.style.transform = `translate(${cam.x}px, ${cam.y}px) scale(${cam.scale})`;
+  wrap.style.transform = `translate(${cam.x}px, ${cam.y}px) rotate(${cam.rot}deg) scale(${cam.scale})`;
   $('#zoom-label').textContent = Math.round(cam.scale * 100) + '%';
+  if (typeof updateKnobs === 'function') updateKnobs();
 }
 function fitToScreen() {
   const pad = 60;
+  cam.rot = 0;
   const sw = stage.clientWidth - pad, sh = stage.clientHeight - pad;
   cam.scale = Math.min(sw / doc.width, sh / doc.height, 1);
   cam.x = (stage.clientWidth - doc.width * cam.scale) / 2;
   cam.y = (stage.clientHeight - doc.height * cam.scale) / 2;
   applyCam();
 }
-// screen (client) coords -> document pixel coords
+// screen (client) coords -> document pixel coords (undo translate, rotate, scale)
 function toDoc(clientX, clientY) {
   const r = stage.getBoundingClientRect();
+  const x = clientX - r.left - cam.x;
+  const y = clientY - r.top - cam.y;
+  const rad = cam.rot * Math.PI / 180;
+  const cos = Math.cos(rad), sin = Math.sin(rad);
   return {
-    x: (clientX - r.left - cam.x) / cam.scale,
-    y: (clientY - r.top - cam.y) / cam.scale
+    x: (x * cos + y * sin) / cam.scale,
+    y: (-x * sin + y * cos) / cam.scale
   };
 }
 
@@ -490,7 +496,7 @@ view.addEventListener('pointerdown', (e) => {
   }
   if (tool === 'eyedropper') {
     const col = pickColor(p.x, p.y);
-    if (col) { brush.color = col; $('#color').value = col; }
+    if (col) { setColorHex(col); addRecent(); }
     return;
   }
   if (tool === 'fill') {
@@ -795,6 +801,7 @@ function applyPreset(name) {
   $('#size').value = p.size; $('#size-val').textContent = p.size;
   $('#opacity').value = Math.round(p.opacity * 100); $('#opacity-val').textContent = Math.round(p.opacity * 100);
   $('#hardness').value = Math.round(p.hardness * 100); $('#hardness-val').textContent = Math.round(p.hardness * 100);
+  updateKnobs();
   if (tool !== 'brush') setTool('brush');
 }
 
@@ -1083,19 +1090,220 @@ async function placeAiImage(dataUrl) {
   composite(); renderLayerList(); updateThumb(doc.active);
 }
 
+// ---------------------------------------------------------------- Knobs
+function setZoomCentered(scale) {
+  scale = clamp(scale, 0.05, 32);
+  const cx = stage.clientWidth / 2, cy = stage.clientHeight / 2;
+  const k = scale / cam.scale;
+  cam.x = cx - (cx - cam.x) * k;
+  cam.y = cy - (cy - cam.y) * k;
+  cam.scale = scale; applyCam();
+}
+function setBrushSize(v) {
+  brush.size = clamp(Math.round(v), 1, 400);
+  $('#size').value = brush.size; $('#size-val').textContent = brush.size;
+  updateKnobs();
+}
+function knobFrac(name) {
+  if (name === 'rotate') return (cam.rot + 180) / 360;
+  if (name === 'zoom') return clamp((Math.log(cam.scale) - Math.log(0.05)) / (Math.log(32) - Math.log(0.05)), 0, 1);
+  return (brush.size - 1) / 399;
+}
+function updateKnobs() {
+  const set = (name, label) => {
+    const el = document.querySelector(`.knob[data-knob="${name}"]`); if (!el) return;
+    el.querySelector('.dial-val').textContent = label;
+    el.querySelector('.dial-ind').style.transform = `rotate(${-135 + knobFrac(name) * 270}deg)`;
+  };
+  set('rotate', Math.round(cam.rot) + '°');
+  set('zoom', Math.round(cam.scale * 100) + '%');
+  set('size', String(Math.round(brush.size)));
+}
+function initKnob(name, get, apply, min, max, step) {
+  const el = document.querySelector(`.knob[data-knob="${name}"]`); if (!el) return;
+  const dial = el.querySelector('.dial');
+  let startY = null, startVal = 0;
+  dial.addEventListener('pointerdown', (e) => { dial.setPointerCapture(e.pointerId); startY = e.clientY; startVal = get(); e.preventDefault(); });
+  dial.addEventListener('pointermove', (e) => { if (startY == null) return; apply(clamp(startVal + (startY - e.clientY) * step, min, max)); });
+  const end = () => { startY = null; };
+  dial.addEventListener('pointerup', end);
+  dial.addEventListener('pointercancel', end);
+  dial.addEventListener('dblclick', () => { apply(name === 'rotate' ? 0 : (name === 'zoom' ? 1 : get())); });
+}
+
+// ---------------------------------------------------------------- Color system
+const WHEEL = { cx: 110, cy: 110, rOuter: 106, rInner: 84, sqX: 56, sqY: 56, sq: 108 };
+let hsb = { h: 0, s: 0, v: 10 };
+let harmMode = 'analog';
+let wheelMode = null;
+const recent = [];
+
+function hsbToRgb(h, s, v) {
+  s /= 100; v /= 100;
+  const c = v * s, x = c * (1 - Math.abs(((h / 60) % 2) - 1)), m = v - c;
+  let r = 0, g = 0, b = 0;
+  if (h < 60) { r = c; g = x; } else if (h < 120) { r = x; g = c; } else if (h < 180) { g = c; b = x; }
+  else if (h < 240) { g = x; b = c; } else if (h < 300) { r = x; b = c; } else { r = c; b = x; }
+  return { r: Math.round((r + m) * 255), g: Math.round((g + m) * 255), b: Math.round((b + m) * 255) };
+}
+function rgbToHsb(r, g, b) {
+  r /= 255; g /= 255; b /= 255;
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn;
+  let h = 0;
+  if (d) { if (mx === r) h = ((g - b) / d) % 6; else if (mx === g) h = (b - r) / d + 2; else h = (r - g) / d + 4; h *= 60; if (h < 0) h += 360; }
+  return { h, s: mx ? (d / mx) * 100 : 0, v: mx * 100 };
+}
+function rgbToHex(r, g, b) { return '#' + [r, g, b].map(x => clamp(Math.round(x), 0, 255).toString(16).padStart(2, '0')).join(''); }
+
+function setColorHex(hex) {
+  hex = ('' + hex).replace('#', '');
+  if (!/^[0-9a-fA-F]{6}$/.test(hex)) return;
+  const rgb = hexToRgb('#' + hex);
+  const c = rgbToHsb(rgb.r, rgb.g, rgb.b);
+  hsb.h = c.h; hsb.s = c.s; hsb.v = c.v;
+  applyColorFromHsb();
+}
+function applyColorFromHsb() {
+  const rgb = hsbToRgb(hsb.h, hsb.s, hsb.v);
+  const hex = rgbToHex(rgb.r, rgb.g, rgb.b);
+  brush.color = hex;
+  const ci = $('#color'); if (ci) ci.value = hex;
+  $('#hex').value = hex.slice(1);
+  $('#cur-swatch').style.background = hex;
+  $('#hsb-h').value = Math.round(hsb.h); $('#hsb-h-val').textContent = Math.round(hsb.h);
+  $('#hsb-s').value = Math.round(hsb.s); $('#hsb-s-val').textContent = Math.round(hsb.s);
+  $('#hsb-b').value = Math.round(hsb.v); $('#hsb-b-val').textContent = Math.round(hsb.v);
+  drawColorWheel(); renderHarmony();
+}
+function drawColorWheel() {
+  const cnv = $('#color-wheel'); if (!cnv) return;
+  const cx = cnv.getContext('2d');
+  cx.clearRect(0, 0, cnv.width, cnv.height);
+  const mid = (WHEEL.rOuter + WHEEL.rInner) / 2;
+  cx.lineWidth = WHEEL.rOuter - WHEEL.rInner;
+  for (let a = 0; a < 360; a++) {
+    const rgb = hsbToRgb(a, 100, 100);
+    cx.beginPath(); cx.strokeStyle = `rgb(${rgb.r},${rgb.g},${rgb.b})`;
+    cx.arc(WHEEL.cx, WHEEL.cy, mid, (a - 0.5) * Math.PI / 180, (a + 1.5) * Math.PI / 180); cx.stroke();
+  }
+  const base = hsbToRgb(hsb.h, 100, 100);
+  cx.fillStyle = `rgb(${base.r},${base.g},${base.b})`; cx.fillRect(WHEEL.sqX, WHEEL.sqY, WHEEL.sq, WHEEL.sq);
+  let g1 = cx.createLinearGradient(WHEEL.sqX, 0, WHEEL.sqX + WHEEL.sq, 0);
+  g1.addColorStop(0, 'rgba(255,255,255,1)'); g1.addColorStop(1, 'rgba(255,255,255,0)');
+  cx.fillStyle = g1; cx.fillRect(WHEEL.sqX, WHEEL.sqY, WHEEL.sq, WHEEL.sq);
+  let g2 = cx.createLinearGradient(0, WHEEL.sqY, 0, WHEEL.sqY + WHEEL.sq);
+  g2.addColorStop(0, 'rgba(0,0,0,0)'); g2.addColorStop(1, 'rgba(0,0,0,1)');
+  cx.fillStyle = g2; cx.fillRect(WHEEL.sqX, WHEEL.sqY, WHEEL.sq, WHEEL.sq);
+  const ha = hsb.h * Math.PI / 180;
+  cx.beginPath(); cx.arc(WHEEL.cx + Math.cos(ha) * mid, WHEEL.cy + Math.sin(ha) * mid, 6, 0, Math.PI * 2);
+  cx.strokeStyle = '#fff'; cx.lineWidth = 2; cx.stroke();
+  const mx = WHEEL.sqX + hsb.s / 100 * WHEEL.sq, my = WHEEL.sqY + (1 - hsb.v / 100) * WHEEL.sq;
+  cx.beginPath(); cx.arc(mx, my, 6, 0, Math.PI * 2); cx.strokeStyle = hsb.v > 55 ? '#000' : '#fff'; cx.lineWidth = 2; cx.stroke();
+}
+function wheelPointer(e) {
+  const cnv = $('#color-wheel'); const r = cnv.getBoundingClientRect();
+  const x = (e.clientX - r.left) * (cnv.width / r.width);
+  const y = (e.clientY - r.top) * (cnv.height / r.height);
+  const dx = x - WHEEL.cx, dy = y - WHEEL.cy, dist = Math.hypot(dx, dy);
+  if (wheelMode === null) wheelMode = (dist >= WHEEL.rInner - 4 && dist <= WHEEL.rOuter + 6) ? 'hue' : 'sb';
+  if (wheelMode === 'hue') {
+    let a = Math.atan2(dy, dx) * 180 / Math.PI; if (a < 0) a += 360; hsb.h = a;
+  } else {
+    hsb.s = clamp((x - WHEEL.sqX) / WHEEL.sq * 100, 0, 100);
+    hsb.v = clamp((1 - (y - WHEEL.sqY) / WHEEL.sq) * 100, 0, 100);
+  }
+  applyColorFromHsb();
+}
+function addRecent() {
+  const hex = brush.color;
+  const i = recent.indexOf(hex); if (i >= 0) recent.splice(i, 1);
+  recent.unshift(hex); if (recent.length > 10) recent.pop();
+  renderRecent();
+}
+function renderRecent() {
+  const el = $('#recent'); if (!el) return; el.innerHTML = '';
+  recent.forEach(hex => { const d = document.createElement('div'); d.className = 'sw'; d.style.background = hex; d.title = hex; d.addEventListener('click', () => { setColorHex(hex); }); el.appendChild(d); });
+}
+function renderHarmony() {
+  const el = $('#harmony'); if (!el) return; el.innerHTML = '';
+  const base = hsb.h;
+  let hues = { comp: [base, base + 180], analog: [base - 30, base, base + 30], triad: [base, base + 120, base + 240], split: [base, base + 150, base + 210] }[harmMode] || [base];
+  hues.forEach(h => {
+    h = ((h % 360) + 360) % 360;
+    const rgb = hsbToRgb(h, hsb.s || 70, hsb.v || 90);
+    const hex = rgbToHex(rgb.r, rgb.g, rgb.b);
+    const d = document.createElement('div'); d.className = 'sw'; d.style.background = hex; d.title = hex;
+    d.addEventListener('click', () => { hsb.h = h; if (!hsb.s) hsb.s = 70; if (hsb.v < 20) hsb.v = 90; applyColorFromHsb(); addRecent(); });
+    el.appendChild(d);
+  });
+}
+
+// ---------------------------------------------------------------- Layer ops
+function duplicateLayer() {
+  const src = doc.layer;
+  const nl = new Layer(doc.width, doc.height, src.name + ' copy');
+  nl.opacity = src.opacity; nl.blend = src.blend; nl.visible = src.visible;
+  nl.ctx.drawImage(src.canvas, 0, 0);
+  doc.layers.splice(doc.active + 1, 0, nl); doc.active++;
+  renderLayerList(); composite();
+}
+function mergeDown() {
+  if (doc.active === 0) return;
+  const top = doc.layer, below = doc.layers[doc.active - 1];
+  below.ctx.globalAlpha = top.opacity; below.ctx.globalCompositeOperation = top.blend;
+  below.ctx.drawImage(top.canvas, 0, 0);
+  below.ctx.globalAlpha = 1; below.ctx.globalCompositeOperation = 'source-over';
+  doc.layers.splice(doc.active, 1); doc.active--;
+  renderLayerList(); composite();
+}
+function moveLayer(dir) {
+  const ni = doc.active + dir;
+  if (ni < 0 || ni >= doc.layers.length) return;
+  const [l] = doc.layers.splice(doc.active, 1);
+  doc.layers.splice(ni, 0, l); doc.active = ni;
+  renderLayerList(); composite();
+}
+
 // ---------------------------------------------------------------- UI wiring
 function bindUI() {
   document.querySelectorAll('.tool[data-tool]').forEach(b =>
     b.addEventListener('click', () => setTool(b.dataset.tool)));
 
-  $('#color').addEventListener('input', e => brush.color = e.target.value);
+  $('#color').addEventListener('input', e => setColorHex(e.target.value));
   const sync = (id, valId, apply, fmt = (v) => v) => {
     const el = $('#' + id);
     el.addEventListener('input', e => { apply(+e.target.value); $('#' + valId).textContent = fmt(+e.target.value); });
   };
-  sync('size', 'size-val', v => brush.size = v);
+  $('#size').addEventListener('input', e => setBrushSize(+e.target.value));
   sync('opacity', 'opacity-val', v => brush.opacity = v / 100);
   sync('hardness', 'hardness-val', v => brush.hardness = v / 100);
+
+  // Knobs
+  initKnob('rotate', () => cam.rot, v => { cam.rot = v; applyCam(); }, -180, 180, 1);
+  initKnob('zoom', () => cam.scale * 100, v => setZoomCentered(v / 100), 5, 3200, 2.5);
+  initKnob('size', () => brush.size, v => setBrushSize(v), 1, 400, 1);
+
+  // Color panel
+  const wheel = $('#color-wheel');
+  wheel.addEventListener('pointerdown', e => { wheel.setPointerCapture(e.pointerId); wheelMode = null; wheelPointer(e); });
+  wheel.addEventListener('pointermove', e => { if (wheelMode !== null && e.buttons) wheelPointer(e); });
+  wheel.addEventListener('pointerup', () => { if (wheelMode !== null) { wheelMode = null; addRecent(); } });
+  $('#hsb-h').addEventListener('input', e => { hsb.h = +e.target.value; applyColorFromHsb(); });
+  $('#hsb-s').addEventListener('input', e => { hsb.s = +e.target.value; applyColorFromHsb(); });
+  $('#hsb-b').addEventListener('input', e => { hsb.v = +e.target.value; applyColorFromHsb(); });
+  ['#hsb-h', '#hsb-s', '#hsb-b'].forEach(id => $(id).addEventListener('change', addRecent));
+  $('#hex').addEventListener('change', e => { setColorHex(e.target.value); addRecent(); });
+  document.querySelectorAll('.hbtn').forEach(b => b.addEventListener('click', () => {
+    harmMode = b.dataset.harm;
+    document.querySelectorAll('.hbtn').forEach(x => x.classList.toggle('active', x === b));
+    renderHarmony();
+  }));
+
+  // Layer ops
+  $('#btn-dup-layer').addEventListener('click', duplicateLayer);
+  $('#btn-merge-layer').addEventListener('click', mergeDown);
+  $('#btn-up-layer').addEventListener('click', () => moveLayer(1));
+  $('#btn-down-layer').addEventListener('click', () => moveLayer(-1));
   $('#pressure').addEventListener('change', e => brush.usePressure = e.target.checked);
   $('#preset').addEventListener('change', e => applyPreset(e.target.value));
 
@@ -1203,5 +1411,8 @@ function bindUI() {
 // ---------------------------------------------------------------- Boot
 bindUI();
 setTool('brush');
+document.querySelector('.hbtn[data-harm="analog"]')?.classList.add('active');
+setColorHex('#1a1a1a');
 newDocument(1920, 1080, '#ffffff');
+updateKnobs();
 requestAnimationFrame(antsLoop);
