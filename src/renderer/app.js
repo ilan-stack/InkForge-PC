@@ -1109,26 +1109,81 @@ function knobFrac(name) {
   if (name === 'zoom') return clamp((Math.log(cam.scale) - Math.log(0.05)) / (Math.log(32) - Math.log(0.05)), 0, 1);
   return (brush.size - 1) / 399;
 }
+const KNOB_LABEL = { rotate: 'Rotate', zoom: 'Zoom', size: 'Size' };
+let draggingKnob = null;
+function knobFormatted(name) {
+  if (name === 'rotate') return Math.round(cam.rot) + '°';
+  if (name === 'zoom') return Math.round(cam.scale * 100) + '%';
+  return String(Math.round(brush.size));
+}
+// Metallic dial with a 21-LED dotted ring (270° arc), matching the macOS KnobControl
+function drawKnob(cnv, frac, formatted, label, dragging) {
+  const ctx = cnv.getContext('2d');
+  const W = cnv.width, H = cnv.height;
+  ctx.clearRect(0, 0, W, H);
+  const cx = W / 2, cy = 74, R = 50, rInner = R - 5;
+  const ang = f => (135 + f * 270) * Math.PI / 180;   // lower-left → top → lower-right
+
+  ctx.save();
+  ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 10; ctx.shadowOffsetY = 3;
+  ctx.fillStyle = '#2e2e30'; ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+
+  let bez = ctx.createLinearGradient(0, cy - R, 0, cy + R);
+  bez.addColorStop(0, '#666'); bez.addColorStop(1, '#212121');
+  ctx.fillStyle = bez; ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.fill();
+
+  let face = ctx.createRadialGradient(cx - rInner * 0.12, cy - rInner * 0.18, 0, cx, cy, rInner);
+  face.addColorStop(0, '#616163'); face.addColorStop(0.6, '#424244'); face.addColorStop(1, '#28282a');
+  ctx.fillStyle = face; ctx.beginPath(); ctx.arc(cx, cy, rInner, 0, Math.PI * 2); ctx.fill();
+
+  ctx.save();
+  ctx.strokeStyle = dragging ? 'rgba(72,116,176,.95)' : 'rgba(72,116,176,.7)';
+  ctx.lineWidth = 1.5; ctx.shadowColor = 'rgba(72,116,176,.5)'; ctx.shadowBlur = 6;
+  ctx.beginPath(); ctx.arc(cx, cy, rInner + 0.5, 0, Math.PI * 2); ctx.stroke();
+  ctx.restore();
+
+  const dotR = R + 10, N = 21;
+  for (let i = 0; i < N; i++) {
+    const f = i / (N - 1), a = ang(f);
+    const dx = cx + dotR * Math.cos(a), dy = cy + dotR * Math.sin(a);
+    if (f <= frac + 0.001) {
+      ctx.save(); ctx.shadowColor = 'rgba(72,116,176,.6)'; ctx.shadowBlur = 6;
+      ctx.fillStyle = '#4874b0'; ctx.beginPath(); ctx.arc(dx, dy, 3, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+    } else {
+      ctx.fillStyle = '#38383a'; ctx.beginPath(); ctx.arc(dx, dy, 2, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+
+  const va = ang(frac);
+  ctx.strokeStyle = `rgba(255,255,255,${dragging ? 1 : 0.85})`; ctx.lineWidth = 2.5; ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(cx + rInner * 0.45 * Math.cos(va), cy + rInner * 0.45 * Math.sin(va));
+  ctx.lineTo(cx + rInner * 0.82 * Math.cos(va), cy + rInner * 0.82 * Math.sin(va));
+  ctx.stroke();
+
+  ctx.fillStyle = 'rgba(242,242,242,.85)'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.font = '600 17px ui-monospace, Menlo, monospace';
+  ctx.fillText(formatted, cx, cy);
+  ctx.fillStyle = '#b3b3b8'; ctx.font = '500 12px -apple-system, "Segoe UI", sans-serif';
+  ctx.fillText(label, cx, cy + R + 18);
+}
 function updateKnobs() {
-  const set = (name, label) => {
-    const el = document.querySelector(`.knob[data-knob="${name}"]`); if (!el) return;
-    el.querySelector('.dial-val').textContent = label;
-    el.querySelector('.dial-ind').style.transform = `rotate(${-135 + knobFrac(name) * 270}deg)`;
-  };
-  set('rotate', Math.round(cam.rot) + '°');
-  set('zoom', Math.round(cam.scale * 100) + '%');
-  set('size', String(Math.round(brush.size)));
+  ['rotate', 'zoom', 'size'].forEach(name => {
+    const cnv = document.querySelector(`.knob[data-knob="${name}"]`); if (!cnv) return;
+    drawKnob(cnv, knobFrac(name), knobFormatted(name), KNOB_LABEL[name], draggingKnob === name);
+  });
 }
 function initKnob(name, get, apply, min, max, step) {
-  const el = document.querySelector(`.knob[data-knob="${name}"]`); if (!el) return;
-  const dial = el.querySelector('.dial');
+  const cnv = document.querySelector(`.knob[data-knob="${name}"]`); if (!cnv) return;
   let startY = null, startVal = 0;
-  dial.addEventListener('pointerdown', (e) => { dial.setPointerCapture(e.pointerId); startY = e.clientY; startVal = get(); e.preventDefault(); });
-  dial.addEventListener('pointermove', (e) => { if (startY == null) return; apply(clamp(startVal + (startY - e.clientY) * step, min, max)); });
-  const end = () => { startY = null; };
-  dial.addEventListener('pointerup', end);
-  dial.addEventListener('pointercancel', end);
-  dial.addEventListener('dblclick', () => { apply(name === 'rotate' ? 0 : (name === 'zoom' ? 1 : get())); });
+  cnv.addEventListener('pointerdown', (e) => { cnv.setPointerCapture(e.pointerId); startY = e.clientY; startVal = get(); draggingKnob = name; updateKnobs(); e.preventDefault(); });
+  cnv.addEventListener('pointermove', (e) => { if (startY == null) return; apply(clamp(startVal + (startY - e.clientY) * step, min, max)); });
+  const end = () => { startY = null; draggingKnob = null; updateKnobs(); };
+  cnv.addEventListener('pointerup', end);
+  cnv.addEventListener('pointercancel', end);
+  cnv.addEventListener('dblclick', () => { apply(name === 'rotate' ? 0 : (name === 'zoom' ? 1 : get())); });
+  cnv.addEventListener('wheel', (e) => { e.preventDefault(); apply(clamp(get() + (-e.deltaY) * step * 0.3, min, max)); }, { passive: false });
 }
 
 // ---------------------------------------------------------------- Color system
@@ -1170,6 +1225,7 @@ function applyColorFromHsb() {
   const ci = $('#color'); if (ci) ci.value = hex;
   $('#hex').value = hex.slice(1);
   $('#cur-swatch').style.background = hex;
+  const ts = $('#tb-color-swatch'); if (ts) ts.style.background = hex;
   $('#hsb-h').value = Math.round(hsb.h); $('#hsb-h-val').textContent = Math.round(hsb.h);
   $('#hsb-s').value = Math.round(hsb.s); $('#hsb-s-val').textContent = Math.round(hsb.s);
   $('#hsb-b').value = Math.round(hsb.v); $('#hsb-b-val').textContent = Math.round(hsb.v);

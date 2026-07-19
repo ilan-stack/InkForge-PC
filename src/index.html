@@ -8,36 +8,31 @@
 </head>
 <body>
   <div id="app">
-    <!-- Left tool rail -->
-    <aside id="toolrail">
-      <div class="brand">◈</div>
-      <button class="tool" data-tool="brush" title="Brush (B)">✎</button>
-      <button class="tool" data-tool="eraser" title="Eraser (E)">⌫</button>
-      <button class="tool" data-tool="smudge" title="Smudge (S)">👆</button>
-      <button class="tool" data-tool="liquify" title="Liquify (W)">🌀</button>
-      <button class="tool" data-tool="fill" title="Fill (G)">🪣</button>
-      <button class="tool" data-tool="eyedropper" title="Eyedropper (I)">💧</button>
-      <button class="tool" data-tool="line" title="Line (L)">╱</button>
-      <button class="tool" data-tool="rect" title="Rectangle (R)">▭</button>
-      <button class="tool" data-tool="ellipse" title="Ellipse (O)">◯</button>
-      <button class="tool" data-tool="text" title="Text (T)">T</button>
-      <button class="tool" data-tool="select" title="Select (M)">⬚</button>
-      <button class="tool" data-tool="move" title="Move Layer (V)">✥</button>
-      <button class="tool" data-tool="pan" title="Pan (Space)">✋</button>
-      <div class="rail-spacer"></div>
-      <button class="tool ghost" id="btn-undo" title="Undo (Ctrl+Z)">↺</button>
-      <button class="tool ghost" id="btn-redo" title="Redo (Ctrl+Shift+Z)">↻</button>
-    </aside>
-
-    <!-- Top options bar -->
-    <header id="topbar">
-      <div class="group">
-        <label>Color</label>
-        <input type="color" id="color" value="#1a1a1a" />
+    <!-- Top toolbar: utility · tools · actions -->
+    <header id="toolbar">
+      <div class="tb-group">
+        <button class="tb-btn" id="btn-undo" title="Undo (Ctrl+Z)">↺</button>
+        <button class="tb-btn" id="btn-redo" title="Redo (Ctrl+Shift+Z)">↻</button>
       </div>
-      <div class="group">
-        <label>Preset</label>
-        <select id="preset">
+      <div class="tb-sep"></div>
+      <div class="tb-group tools">
+        <button class="tool" data-tool="brush" title="Brush (B)">✎</button>
+        <button class="tool" data-tool="eraser" title="Eraser (E)">⌫</button>
+        <button class="tool" data-tool="smudge" title="Smudge (S)">👆</button>
+        <button class="tool" data-tool="liquify" title="Liquify (W)">🌀</button>
+        <button class="tool" data-tool="fill" title="Fill (G)">🪣</button>
+        <button class="tool" data-tool="eyedropper" title="Eyedropper (I)">💧</button>
+        <button class="tool" data-tool="line" title="Line (L)">╱</button>
+        <button class="tool" data-tool="rect" title="Rectangle (R)">▭</button>
+        <button class="tool" data-tool="ellipse" title="Ellipse (O)">◯</button>
+        <button class="tool" data-tool="text" title="Text (T)">Aa</button>
+        <button class="tool" data-tool="select" title="Select (M)">⬚</button>
+        <button class="tool" data-tool="move" title="Move Layer (V)">✥</button>
+        <button class="tool" data-tool="pan" title="Pan (Space)">✋</button>
+      </div>
+      <div class="tb-sep"></div>
+      <div class="tb-group">
+        <select id="preset" title="Brush preset">
           <option value="">Custom</option>
           <option value="Pencil">Pencil</option>
           <option value="Ink">Ink Pen</option>
@@ -45,40 +40,44 @@
           <option value="Airbrush">Airbrush</option>
           <option value="Soft">Soft Round</option>
         </select>
+        <label class="tb-check"><input type="checkbox" id="pressure" checked /> Pressure</label>
+        <label class="tb-mini">Hard <input type="range" id="hardness" min="0" max="100" value="80" /><span id="hardness-val">80</span></label>
       </div>
-      <div class="group">
-        <label>Size <span id="size-val">12</span></label>
-        <input type="range" id="size" min="1" max="400" value="12" />
+      <div class="tb-spacer"></div>
+      <div class="tb-group">
+        <button class="tb-btn wide" id="btn-filters">Filters</button>
+        <button class="tb-btn wide" id="btn-effects">Effects</button>
+        <button class="tb-btn wide" id="btn-animate">Animate</button>
+        <button class="tb-btn wide accent" id="btn-ai">AI ✦</button>
       </div>
-      <div class="group">
-        <label>Opacity <span id="opacity-val">100</span>%</label>
-        <input type="range" id="opacity" min="1" max="100" value="100" />
+      <div class="tb-sep"></div>
+      <div class="tb-group">
+        <button class="tb-btn wide" id="btn-open">Open</button>
+        <button class="tb-btn wide" id="btn-save">Save</button>
+        <button class="tb-btn wide" id="btn-new">New</button>
+        <button class="tb-btn wide" id="btn-export">Export</button>
       </div>
-      <div class="group">
-        <label>Hardness <span id="hardness-val">80</span>%</label>
-        <input type="range" id="hardness" min="0" max="100" value="80" />
-      </div>
-      <div class="group toggle">
-        <label><input type="checkbox" id="pressure" checked /> Pen pressure</label>
-      </div>
-      <div class="group grow"></div>
-      <div class="group">
-        <span id="zoom-label" class="pill">100%</span>
-        <button id="btn-fit" class="btn">Fit</button>
-      </div>
-      <div class="group">
-        <button id="btn-filters" class="btn">Filters</button>
-        <button id="btn-effects" class="btn">Effects</button>
-        <button id="btn-animate" class="btn">Animate</button>
-        <button id="btn-ai" class="btn">AI ✦</button>
-      </div>
-      <div class="group">
-        <button id="btn-open" class="btn">Open</button>
-        <button id="btn-save" class="btn">Save</button>
-        <button id="btn-new" class="btn">New</button>
-        <button id="btn-export" class="btn primary">Export PNG</button>
+      <div class="tb-group">
+        <span id="zoom-label" class="tb-pill">100%</span>
+        <button class="tb-btn" id="btn-fit" title="Fit to screen">⤢</button>
+        <span class="tb-swatch" id="tb-color-swatch" title="Current color"></span>
+        <input type="color" id="color" hidden />
       </div>
     </header>
+
+    <!-- Left: vertical Size + Opacity sliders -->
+    <aside id="lslider">
+      <div class="vslider">
+        <span class="vs-label">Size</span>
+        <span class="vs-val" id="size-val">12</span>
+        <input type="range" class="vs-range" id="size" min="1" max="400" value="12" orient="vertical" />
+      </div>
+      <div class="vslider">
+        <span class="vs-label">Opac</span>
+        <span class="vs-val" id="opacity-val">100</span>
+        <input type="range" class="vs-range" id="opacity" min="1" max="100" value="100" orient="vertical" />
+      </div>
+    </aside>
 
     <!-- Canvas stage -->
     <main id="stage">
@@ -86,18 +85,34 @@
         <canvas id="view"></canvas>
       </div>
       <div id="cursor-ring"></div>
+
+      <section id="timeline" class="hidden">
+        <div class="tl-controls">
+          <button id="tl-play" title="Play / Stop">▶</button>
+          <button id="tl-add" title="Add frame">＋</button>
+          <button id="tl-dup" title="Duplicate frame">⎘</button>
+          <button id="tl-del" title="Delete frame">🗑</button>
+          <label class="tl-onion"><input type="checkbox" id="tl-onion" /> Onion</label>
+          <label>FPS <input type="number" id="tl-fps" value="12" min="1" max="60" /></label>
+          <div class="tl-grow"></div>
+          <button id="tl-gif" class="tb-btn wide">Export GIF</button>
+          <button id="tl-webm" class="tb-btn wide">Export WebM</button>
+        </div>
+        <ul id="frame-list"></ul>
+      </section>
     </main>
 
-    <!-- Right sidebar: knobs + layers + color -->
-    <aside id="layers-panel">
-      <div id="knobs">
-        <div class="knob" data-knob="rotate"><div class="dial"><span class="dial-ind"></span><span class="dial-val">0°</span></div><label>Rotate</label></div>
-        <div class="knob" data-knob="zoom"><div class="dial"><span class="dial-ind"></span><span class="dial-val">100%</span></div><label>Zoom</label></div>
-        <div class="knob" data-knob="size"><div class="dial"><span class="dial-ind"></span><span class="dial-val">12</span></div><label>Size</label></div>
-      </div>
+    <!-- Knob column -->
+    <aside id="knobs">
+      <canvas class="knob" data-knob="rotate" width="150" height="168"></canvas>
+      <canvas class="knob" data-knob="zoom" width="150" height="168"></canvas>
+      <canvas class="knob" data-knob="size" width="150" height="168"></canvas>
+    </aside>
 
+    <!-- Right panel: layers + color -->
+    <aside id="rpanel">
       <div class="panel-head">
-        <span>Layers</span>
+        <span>LAYERS</span>
         <div class="panel-actions">
           <button id="btn-add-layer" title="Add layer">＋</button>
           <button id="btn-dup-layer" title="Duplicate layer">⎘</button>
@@ -107,12 +122,7 @@
           <button id="btn-del-layer" title="Delete layer">🗑</button>
         </div>
       </div>
-      <div class="layer-opacity">
-        <label>Layer opacity <span id="layer-op-val">100</span>%</label>
-        <input type="range" id="layer-opacity" min="0" max="100" value="100" />
-      </div>
       <div class="layer-blend">
-        <label>Blend</label>
         <select id="blend-mode">
           <option value="source-over">Normal</option>
           <option value="multiply">Multiply</option>
@@ -126,11 +136,14 @@
           <option value="color">Color</option>
         </select>
       </div>
+      <div class="layer-opacity">
+        <label>Opacity <span id="layer-op-val">100</span>%</label>
+        <input type="range" id="layer-opacity" min="0" max="100" value="100" />
+      </div>
       <ul id="layer-list"></ul>
 
       <div id="color-panel">
-        <div class="panel-head"><span>Color</span></div>
-        <canvas id="color-wheel" width="220" height="220"></canvas>
+        <canvas id="color-wheel" width="216" height="216"></canvas>
         <div class="hsb-row"><span>H</span><input type="range" id="hsb-h" min="0" max="360" value="0" /><span id="hsb-h-val">0</span></div>
         <div class="hsb-row"><span>S</span><input type="range" id="hsb-s" min="0" max="100" value="0" /><span id="hsb-s-val">0</span></div>
         <div class="hsb-row"><span>B</span><input type="range" id="hsb-b" min="0" max="100" value="0" /><span id="hsb-b-val">0</span></div>
@@ -147,21 +160,6 @@
         <div id="harmony" class="swatch-grid"></div>
       </div>
     </aside>
-
-    <section id="timeline" class="hidden">
-      <div class="tl-controls">
-        <button id="tl-play" title="Play / Stop">▶</button>
-        <button id="tl-add" title="Add frame">＋</button>
-        <button id="tl-dup" title="Duplicate frame">⎘</button>
-        <button id="tl-del" title="Delete frame">🗑</button>
-        <label class="tl-onion"><input type="checkbox" id="tl-onion" /> Onion</label>
-        <label>FPS <input type="number" id="tl-fps" value="12" min="1" max="60" /></label>
-        <div class="tl-grow"></div>
-        <button id="tl-gif" class="btn">Export GIF</button>
-        <button id="tl-webm" class="btn">Export WebM</button>
-      </div>
-      <ul id="frame-list"></ul>
-    </section>
 
     <footer id="statusbar">
       <span id="status-tool">Brush</span>
