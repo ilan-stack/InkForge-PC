@@ -1077,10 +1077,13 @@ async function aiGenerate() {
   if (!key) { status.textContent = 'Enter your API key first.'; return; }
   if (!prompt) { status.textContent = 'Enter a prompt.'; return; }
   if (!window.inkforge?.aiGenerate) { status.textContent = 'AI generation only runs in the desktop app.'; return; }
-  status.textContent = 'Generating… this can take 10-40s.';
+  const useDraw = $('#ai-usedraw').checked;
+  const strength = (+$('#ai-strength').value || 70) / 100;
+  const initImage = useDraw ? flattenCanvasDataUrl().replace(/^data:image\/png;base64,/, '') : null;
+  status.textContent = (useDraw ? 'Generating from your drawing… ' : 'Generating… ') + 'this can take 10-40s.';
   $('#ai-generate').disabled = true;
   try {
-    const res = await window.inkforge.aiGenerate({ provider, key, model, prompt });
+    const res = await window.inkforge.aiGenerate({ provider, key, model, prompt, initImage, strength });
     if (!res || res.error) { status.textContent = 'Error: ' + (res?.error || 'no response'); return; }
     await placeAiImage('data:' + (res.mime || 'image/png') + ';base64,' + res.image);
     status.textContent = 'Done ✓ added as a new layer.';
@@ -1089,6 +1092,19 @@ async function aiGenerate() {
   } finally {
     $('#ai-generate').disabled = false;
   }
+}
+// Flatten all visible layers onto an opaque white canvas (init image for img2img)
+function flattenCanvasDataUrl() {
+  const out = document.createElement('canvas');
+  out.width = doc.width; out.height = doc.height;
+  const octx = out.getContext('2d');
+  octx.fillStyle = '#ffffff'; octx.fillRect(0, 0, out.width, out.height);
+  for (const l of doc.layers) {
+    if (!l.visible || l.opacity <= 0) continue;
+    octx.globalAlpha = l.opacity; octx.globalCompositeOperation = l.blend;
+    octx.drawImage(l.canvas, 0, 0);
+  }
+  return out.toDataURL('image/png');
 }
 async function placeAiImage(dataUrl) {
   const img = await new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = dataUrl; });
@@ -1394,6 +1410,7 @@ function bindUI() {
   $('#ai-key').addEventListener('change', saveAiSettings);
   $('#ai-model').addEventListener('change', saveAiSettings);
   $('#ai-generate').addEventListener('click', aiGenerate);
+  $('#ai-strength').addEventListener('input', e => $('#ai-strength-val').textContent = e.target.value);
 
   $('#layer-opacity').addEventListener('input', e => {
     doc.layer.opacity = +e.target.value / 100;

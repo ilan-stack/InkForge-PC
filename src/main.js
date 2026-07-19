@@ -106,21 +106,23 @@ ipcMain.handle('save-file', async (_evt, { defaultName, ext, base64 }) => {
 });
 
 // ---- AI image generation (runs in main to avoid renderer CORS) ----
-async function geminiGenerate(key, model, prompt) {
+async function geminiGenerate(key, model, prompt, initImage) {
   const m = model || 'gemini-2.0-flash-preview-image-generation';
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${encodeURIComponent(key)}`;
+  const parts = [{ text: prompt }];
+  if (initImage) parts.push({ inlineData: { mimeType: 'image/png', data: initImage } });
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
+      contents: [{ parts }],
       generationConfig: { responseModalities: ['TEXT', 'IMAGE'] }
     })
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) return { error: data.error?.message || ('HTTP ' + res.status) };
-  const parts = data.candidates?.[0]?.content?.parts || [];
-  const img = parts.find(p => p.inlineData?.data);
+  const respParts = data.candidates?.[0]?.content?.parts || [];
+  const img = respParts.find(p => p.inlineData?.data);
   if (!img) return { error: 'No image returned (model may not support image output).' };
   return { image: img.inlineData.data, mime: img.inlineData.mimeType || 'image/png' };
 }
@@ -148,8 +150,8 @@ async function replicateGenerate(key, model, prompt) {
   return { image: buf.toString('base64'), mime: imgRes.headers.get('content-type') || 'image/png' };
 }
 
-// Local ComfyUI (Stable Diffusion) — build a txt2img graph, queue it, poll, fetch the PNG
-async function comfyuiGenerate(serverUrl, model, prompt) {
+// Local ComfyUI (Stable Diffusion) — txt2img, or img2img when an init image is supplied
+async function comfyuiGenerate(serverUrl, model, prompt, initImage, strength) {
   const base = (serverUrl || 'http://127.0.0.1:8188').replace(/\/+$/, '');
   const ckpt = model || 'DreamShaper_8_pruned.safetensors';
   const low = ckpt.toLowerCase();
@@ -157,15 +159,44 @@ async function comfyuiGenerate(serverUrl, model, prompt) {
   if (low.includes('lightning')) { steps = 6; cfg = 2; w = 1024; h = 1024; sched = 'sgm_uniform'; }
   else if (low.includes('xl')) { steps = 25; cfg = 6; w = 1024; h = 1024; }
   const seed = Math.floor(Math.random() * 1e15);
-  const wf = {
-    "3": { class_type: "KSampler", inputs: { seed, steps, cfg, sampler_name: sampler, scheduler: sched, denoise: 1, model: ["4", 0], positive: ["6", 0], negative: ["7", 0], latent_image: ["5", 0] } },
-    "4": { class_type: "CheckpointLoaderSimple", inputs: { ckpt_name: ckpt } },
-    "5": { class_type: "EmptyLatentImage", inputs: { width: w, height: h, batch_size: 1 } },
-    "6": { class_type: "CLIPTextEncode", inputs: { text: prompt, clip: ["4", 1] } },
-    "7": { class_type: "CLIPTextEncode", inputs: { text: "lowres, bad anatomy, blurry, watermark, text", clip: ["4", 1] } },
-    "8": { class_type: "VAEDecode", inputs: { samples: ["3", 0], vae: ["4", 2] } },
-    "9": { class_type: "SaveImage", inputs: { filename_prefix: "InkForge", images: ["8", 0] } }
-  };
+  const denoise = initImage ? Math.min(1, Math.max(0.2, strength || 0.7)) : 1;
+
+  let wf;
+  if (initImage) {
+    // upload the drawing, then img2img (LoadImage -> VAEEncode -> KSampler latent)
+    let ref;
+    try {
+      const fd = new FormData();
+      fd.append('image', new Blob([Buffer.from(initImage, 'base64')], { type: 'image/png' }), 'inkforge_init.png');
+      fd.append('overwrite', 'true');
+      const up = await fetch(base + '/upload/image', { method: 'POST', body: fd });
+      const uj = await up.json().catch(() => ({}));
+      if (!up.ok || !uj.name) return { error: 'ComfyUI rejected the drawing upload.' };
+      ref = uj.subfolder ? `${uj.subfolder}/${uj.name}` : uj.name;
+    } catch (e) {
+      return { error: `Can't reach ComfyUI at ${base} to upload the drawing. (${e.message})` };
+    }
+    wf = {
+      "3": { class_type: "KSampler", inputs: { seed, steps, cfg, sampler_name: sampler, scheduler: sched, denoise, model: ["4", 0], positive: ["6", 0], negative: ["7", 0], latent_image: ["10", 0] } },
+      "4": { class_type: "CheckpointLoaderSimple", inputs: { ckpt_name: ckpt } },
+      "6": { class_type: "CLIPTextEncode", inputs: { text: prompt, clip: ["4", 1] } },
+      "7": { class_type: "CLIPTextEncode", inputs: { text: "lowres, bad anatomy, blurry, watermark, text", clip: ["4", 1] } },
+      "8": { class_type: "VAEDecode", inputs: { samples: ["3", 0], vae: ["4", 2] } },
+      "9": { class_type: "SaveImage", inputs: { filename_prefix: "InkForge", images: ["8", 0] } },
+      "10": { class_type: "VAEEncode", inputs: { pixels: ["11", 0], vae: ["4", 2] } },
+      "11": { class_type: "LoadImage", inputs: { image: ref } }
+    };
+  } else {
+    wf = {
+      "3": { class_type: "KSampler", inputs: { seed, steps, cfg, sampler_name: sampler, scheduler: sched, denoise: 1, model: ["4", 0], positive: ["6", 0], negative: ["7", 0], latent_image: ["5", 0] } },
+      "4": { class_type: "CheckpointLoaderSimple", inputs: { ckpt_name: ckpt } },
+      "5": { class_type: "EmptyLatentImage", inputs: { width: w, height: h, batch_size: 1 } },
+      "6": { class_type: "CLIPTextEncode", inputs: { text: prompt, clip: ["4", 1] } },
+      "7": { class_type: "CLIPTextEncode", inputs: { text: "lowres, bad anatomy, blurry, watermark, text", clip: ["4", 1] } },
+      "8": { class_type: "VAEDecode", inputs: { samples: ["3", 0], vae: ["4", 2] } },
+      "9": { class_type: "SaveImage", inputs: { filename_prefix: "InkForge", images: ["8", 0] } }
+    };
+  }
   let res;
   try {
     res = await fetch(base + '/prompt', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt: wf, client_id: 'inkforge' }) });
@@ -198,11 +229,11 @@ async function comfyuiGenerate(serverUrl, model, prompt) {
   return { error: 'Timed out waiting for ComfyUI (generation took too long).' };
 }
 
-ipcMain.handle('ai-generate', async (_evt, { provider, key, model, prompt }) => {
+ipcMain.handle('ai-generate', async (_evt, { provider, key, model, prompt, initImage, strength }) => {
   try {
-    if (provider === 'gemini') return await geminiGenerate(key, model, prompt);
+    if (provider === 'gemini') return await geminiGenerate(key, model, prompt, initImage);
     if (provider === 'replicate') return await replicateGenerate(key, model, prompt);
-    if (provider === 'comfyui') return await comfyuiGenerate(key, model, prompt);
+    if (provider === 'comfyui') return await comfyuiGenerate(key, model, prompt, initImage, strength);
     return { error: 'Unknown provider' };
   } catch (err) {
     return { error: String(err && err.message ? err.message : err) };

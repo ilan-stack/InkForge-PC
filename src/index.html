@@ -266,6 +266,9 @@
       <div class="row"><label id="ai-key-label">API Key</label><input type="password" id="ai-key" placeholder="paste your key (saved locally)" /></div>
       <div class="row"><label id="ai-model-label">Model</label><input type="text" id="ai-model" placeholder="(default)" /></div>
       <div class="row full"><textarea id="ai-prompt" rows="3" placeholder="Describe the image to generate…"></textarea></div>
+      <div class="row"><label><input type="checkbox" id="ai-usedraw" checked /> Use my drawing (img2img)</label></div>
+      <div class="row"><label>Strength <span id="ai-strength-val">70</span>% <span class="dim">keep ← → transform</span></label>
+        <input type="range" id="ai-strength" min="20" max="100" value="70" /></div>
       <div class="ai-status" id="ai-status"></div>
       <div class="dialog-actions">
         <button value="cancel" class="btn">Close</button>
