@@ -17,6 +17,7 @@ This is a ground-up port of the macOS-native (AppKit/CoreGraphics) InkForge, whi
 - Frame-by-frame **animation**: timeline with add / duplicate / delete, playback, onion-skinning, adjustable FPS
 - **GIF export** (built-in GIF89a encoder, median-cut palette) and **WebM export**
 - Brush presets: Pencil, Ink Pen, Marker, Airbrush, Soft Round
+- **AI image generation** (Google Gemini / Replicate) - paste your own key in-app, generate from a prompt onto a new layer
 - Save / Open native `.inkforge` project files (all frames + layers preserved); PNG export
 - Pan (space-drag / middle-mouse) and cursor-anchored zoom (wheel), undo / redo
 - Neumorphic dark UI; `touch-action: none` so pen/touch never gets hijacked as a gesture
@@ -40,6 +41,13 @@ GitHub Actions workflow (`.github/workflows/build.yml`) that builds the `.exe` o
 Windows runner and attaches it to a GitHub Release on any `v*` tag (or via manual
 "Run workflow").
 
-## Roadmap (from the original InkForge feature set)
-Smudge, Liquify, Selection + transform, text tool, filters/effects, animation timeline
-with onion-skin + GIF export, brush library, and the AI (Gemini/Replicate) providers.
+## Status
+Full feature port complete (v1.0.0): 13 tools, layers with blend modes, selection,
+filters, layer effects, animation timeline with GIF/WebM export, brush presets, native
+project save/load, and AI image generation. The Windows `.exe` is built on a GitHub
+Actions runner on every `v*` tag and attached to the release.
+
+### AI keys
+AI is bring-your-own-key: open **AI ✦** in the app, pick Google Gemini or Replicate,
+and paste your key (stored locally on your machine only - never bundled in the build).
+Calls are routed through the app's main process, so there are no browser CORS issues.

@@ -1025,6 +1025,64 @@ function lzwEncode(indices, minCodeSize) {
   return out;
 }
 
+// ---------------------------------------------------------------- AI image gen
+const AI_DEFAULT_MODEL = {
+  gemini: 'gemini-2.0-flash-preview-image-generation',
+  replicate: 'black-forest-labs/flux-schnell'
+};
+function fillAiFields(prov) {
+  $('#ai-key').value = localStorage.getItem('inkforge.ai.key.' + prov) || '';
+  $('#ai-model').value = localStorage.getItem('inkforge.ai.model.' + prov) || '';
+  $('#ai-model').placeholder = AI_DEFAULT_MODEL[prov] || '(default)';
+}
+function loadAiSettings() { // on dialog open: restore stored provider + its fields
+  const prov = localStorage.getItem('inkforge.ai.provider') || 'gemini';
+  $('#ai-provider').value = prov;
+  fillAiFields(prov);
+}
+function onAiProviderChange() { // on select change: persist new provider, load its fields
+  const prov = $('#ai-provider').value;
+  localStorage.setItem('inkforge.ai.provider', prov);
+  fillAiFields(prov);
+}
+function saveAiSettings() {
+  const prov = $('#ai-provider').value;
+  localStorage.setItem('inkforge.ai.provider', prov);
+  localStorage.setItem('inkforge.ai.key.' + prov, $('#ai-key').value.trim());
+  localStorage.setItem('inkforge.ai.model.' + prov, $('#ai-model').value.trim());
+}
+async function aiGenerate() {
+  saveAiSettings();
+  const provider = $('#ai-provider').value;
+  const key = $('#ai-key').value.trim();
+  const model = $('#ai-model').value.trim() || AI_DEFAULT_MODEL[provider];
+  const prompt = $('#ai-prompt').value.trim();
+  const status = $('#ai-status');
+  if (!key) { status.textContent = 'Enter your API key first.'; return; }
+  if (!prompt) { status.textContent = 'Enter a prompt.'; return; }
+  if (!window.inkforge?.aiGenerate) { status.textContent = 'AI generation only runs in the desktop app.'; return; }
+  status.textContent = 'Generating… this can take 10-40s.';
+  $('#ai-generate').disabled = true;
+  try {
+    const res = await window.inkforge.aiGenerate({ provider, key, model, prompt });
+    if (!res || res.error) { status.textContent = 'Error: ' + (res?.error || 'no response'); return; }
+    await placeAiImage('data:' + (res.mime || 'image/png') + ';base64,' + res.image);
+    status.textContent = 'Done ✓ added as a new layer.';
+  } catch (e) {
+    status.textContent = 'Error: ' + (e.message || e);
+  } finally {
+    $('#ai-generate').disabled = false;
+  }
+}
+async function placeAiImage(dataUrl) {
+  const img = await new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = dataUrl; });
+  const l = addLayer('AI Image', true);
+  const scale = Math.min(doc.width / img.width, doc.height / img.height);
+  const w = img.width * scale, h = img.height * scale;
+  l.ctx.drawImage(img, (doc.width - w) / 2, (doc.height - h) / 2, w, h);
+  composite(); renderLayerList(); updateThumb(doc.active);
+}
+
 // ---------------------------------------------------------------- UI wiring
 function bindUI() {
   document.querySelectorAll('.tool[data-tool]').forEach(b =>
@@ -1056,6 +1114,13 @@ function bindUI() {
   $('#tl-fps').addEventListener('change', e => { doc.fps = clamp(+e.target.value || 12, 1, 60); });
   $('#tl-gif').addEventListener('click', exportGif);
   $('#tl-webm').addEventListener('click', exportWebm);
+
+  // AI
+  $('#btn-ai').addEventListener('click', () => { loadAiSettings(); $('#ai-dialog').showModal(); });
+  $('#ai-provider').addEventListener('change', onAiProviderChange);
+  $('#ai-key').addEventListener('change', saveAiSettings);
+  $('#ai-model').addEventListener('change', saveAiSettings);
+  $('#ai-generate').addEventListener('click', aiGenerate);
 
   $('#layer-opacity').addEventListener('input', e => {
     doc.layer.opacity = +e.target.value / 100;

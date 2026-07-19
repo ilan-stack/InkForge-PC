@@ -105,6 +105,59 @@ ipcMain.handle('save-file', async (_evt, { defaultName, ext, base64 }) => {
   return { ok: true, filePath };
 });
 
+// ---- AI image generation (runs in main to avoid renderer CORS) ----
+async function geminiGenerate(key, model, prompt) {
+  const m = model || 'gemini-2.0-flash-preview-image-generation';
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${encodeURIComponent(key)}`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: { responseModalities: ['TEXT', 'IMAGE'] }
+    })
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) return { error: data.error?.message || ('HTTP ' + res.status) };
+  const parts = data.candidates?.[0]?.content?.parts || [];
+  const img = parts.find(p => p.inlineData?.data);
+  if (!img) return { error: 'No image returned (model may not support image output).' };
+  return { image: img.inlineData.data, mime: img.inlineData.mimeType || 'image/png' };
+}
+
+async function replicateGenerate(key, model, prompt) {
+  const m = model || 'black-forest-labs/flux-schnell';
+  const create = await fetch(`https://api.replicate.com/v1/models/${m}/predictions`, {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json', 'Prefer': 'wait' },
+    body: JSON.stringify({ input: { prompt } })
+  });
+  let pred = await create.json().catch(() => ({}));
+  if (!create.ok) return { error: pred.detail || pred.title || ('HTTP ' + create.status) };
+  let tries = 0;
+  while (pred.status && !['succeeded', 'failed', 'canceled'].includes(pred.status) && tries++ < 60) {
+    await new Promise(r => setTimeout(r, 1500));
+    const p = await fetch(pred.urls.get, { headers: { 'Authorization': 'Bearer ' + key } });
+    pred = await p.json();
+  }
+  if (pred.status !== 'succeeded') return { error: 'Generation ' + (pred.status || 'failed') + (pred.error ? ': ' + pred.error : '') };
+  const out = Array.isArray(pred.output) ? pred.output[0] : pred.output;
+  if (!out) return { error: 'No output produced.' };
+  const imgRes = await fetch(out);
+  const buf = Buffer.from(await imgRes.arrayBuffer());
+  return { image: buf.toString('base64'), mime: imgRes.headers.get('content-type') || 'image/png' };
+}
+
+ipcMain.handle('ai-generate', async (_evt, { provider, key, model, prompt }) => {
+  try {
+    if (provider === 'gemini') return await geminiGenerate(key, model, prompt);
+    if (provider === 'replicate') return await replicateGenerate(key, model, prompt);
+    return { error: 'Unknown provider' };
+  } catch (err) {
+    return { error: String(err && err.message ? err.message : err) };
+  }
+});
+
 app.whenReady().then(createWindow);
 
 app.on('window-all-closed', () => {
