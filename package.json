@@ -1,7 +1,7 @@
 {
   "name": "inkforge",
   "productName": "InkForge",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "InkForge - cross-platform drawing app (Windows/Mac/Linux)",
   "main": "src/main.js",
   "author": "Ilan Lenzner",

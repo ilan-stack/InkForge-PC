@@ -21,6 +21,8 @@ body {
   color: var(--text);
   user-select: none;
   -webkit-user-select: none;
+  touch-action: none;              /* stop pen/touch drags being hijacked as scroll/zoom gestures */
+  overscroll-behavior: none;
 }
 
 #app {
@@ -104,16 +106,19 @@ input[type="color"] {
   grid-area: stage;
   position: relative;
   overflow: hidden;
+  touch-action: none;
   background:
     repeating-conic-gradient(#2a2d33 0% 25%, #26292e 0% 50%) 50% / 24px 24px;
 }
 #canvas-wrap {
   position: absolute; top: 0; left: 0;
   transform-origin: 0 0;
+  touch-action: none;
   box-shadow: 0 10px 40px rgba(0,0,0,.5);
 }
 #view {
   display: block;
+  touch-action: none;
   background-image:
     linear-gradient(45deg, #d0d0d0 25%, transparent 25%),
     linear-gradient(-45deg, #d0d0d0 25%, transparent 25%),
