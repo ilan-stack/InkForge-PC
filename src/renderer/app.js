@@ -1034,16 +1034,25 @@ function lzwEncode(indices, minCodeSize) {
 
 // ---------------------------------------------------------------- AI image gen
 const AI_DEFAULT_MODEL = {
+  comfyui: 'DreamShaper_8_pruned.safetensors',
   gemini: 'gemini-2.0-flash-preview-image-generation',
   replicate: 'black-forest-labs/flux-schnell'
 };
+const COMFY_DEFAULT_URL = 'http://127.0.0.1:8188';
 function fillAiFields(prov) {
-  $('#ai-key').value = localStorage.getItem('inkforge.ai.key.' + prov) || '';
+  const isLocal = prov === 'comfyui';
+  $('#ai-key-label').textContent = isLocal ? 'Server' : 'API Key';
+  $('#ai-model-label').textContent = isLocal ? 'Checkpoint' : 'Model';
+  $('#ai-key').type = isLocal ? 'text' : 'password';
+  $('#ai-key').placeholder = isLocal ? COMFY_DEFAULT_URL : 'paste your key (saved locally)';
+  let key = localStorage.getItem('inkforge.ai.key.' + prov) || '';
+  if (isLocal && !key) key = COMFY_DEFAULT_URL;
+  $('#ai-key').value = key;
   $('#ai-model').value = localStorage.getItem('inkforge.ai.model.' + prov) || '';
   $('#ai-model').placeholder = AI_DEFAULT_MODEL[prov] || '(default)';
 }
 function loadAiSettings() { // on dialog open: restore stored provider + its fields
-  const prov = localStorage.getItem('inkforge.ai.provider') || 'gemini';
+  const prov = localStorage.getItem('inkforge.ai.provider') || 'comfyui';
   $('#ai-provider').value = prov;
   fillAiFields(prov);
 }

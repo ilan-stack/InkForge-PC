@@ -50,7 +50,12 @@ filters, layer effects, animation timeline with GIF/WebM export, brush presets, 
 project save/load, and AI image generation. The Windows `.exe` is built on a GitHub
 Actions runner on every `v*` tag and attached to the release.
 
-### AI keys
-AI is bring-your-own-key: open **AI ✦** in the app, pick Google Gemini or Replicate,
-and paste your key (stored locally on your machine only - never bundled in the build).
-Calls are routed through the app's main process, so there are no browser CORS issues.
+### AI image generation
+Open **AI ✦** and pick a provider:
+- **Local · ComfyUI (this PC)** — generates on your own GPU via a local ComfyUI server
+  (default `http://127.0.0.1:8188`). No API key, no cloud, no cost. Pick any installed
+  checkpoint (e.g. DreamShaper 8, Juggernaut XL Lightning). The app builds a txt2img
+  graph, queues it, and drops the result on a new layer.
+- **Google Gemini / Replicate** — bring your own key (stored locally, never bundled).
+
+All calls route through the app's main process, so there are no browser CORS issues.

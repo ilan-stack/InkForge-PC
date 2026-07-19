@@ -258,12 +258,13 @@
       <h3>AI Image <span class="dim">· adds a new layer</span></h3>
       <div class="row"><label>Provider</label>
         <select id="ai-provider">
+          <option value="comfyui">Local · ComfyUI (this PC)</option>
           <option value="gemini">Google Gemini</option>
           <option value="replicate">Replicate</option>
         </select>
       </div>
-      <div class="row"><label>API Key</label><input type="password" id="ai-key" placeholder="paste your key (saved locally)" /></div>
-      <div class="row"><label>Model</label><input type="text" id="ai-model" placeholder="(default)" /></div>
+      <div class="row"><label id="ai-key-label">API Key</label><input type="password" id="ai-key" placeholder="paste your key (saved locally)" /></div>
+      <div class="row"><label id="ai-model-label">Model</label><input type="text" id="ai-model" placeholder="(default)" /></div>
       <div class="row full"><textarea id="ai-prompt" rows="3" placeholder="Describe the image to generate…"></textarea></div>
       <div class="ai-status" id="ai-status"></div>
       <div class="dialog-actions">
