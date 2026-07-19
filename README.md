@@ -5,15 +5,18 @@ A cross-platform rebuild of the InkForge drawing app, running on **Windows, macO
 This is a ground-up port of the macOS-native (AppKit/CoreGraphics) InkForge, which cannot run on Windows. The drawing engine here is rebuilt on the web canvas stack so it produces a real Windows `.exe`.
 
 ## Features
-- Layered canvas engine (add / delete / reorder, per-layer opacity, blend modes, visibility)
-- Tools: Brush, Eraser, Fill bucket, Eyedropper, Line, Rectangle, Ellipse, Text, Move layer, Pan
+- Layered canvas engine (add / delete, per-layer opacity, blend modes, visibility, thumbnails)
+- Tools: Brush, Eraser, Smudge, Liquify, Fill bucket, Eyedropper, Line, Rectangle, Ellipse, Text, Rectangular Select, Move layer, Pan
 - Pressure-sensitive brush (works with pen tablets via Pointer Events), soft/hard tips, spacing-based stamping
+- Smudge (color pickup + smear) and Liquify (push) pixel tools
+- Rectangular selection with marching ants; clips brush/shapes; Delete clears, Ctrl+A / Ctrl+D select-all / deselect
 - Shapes with live preview and Shift-constrain (square / circle / 45° lines)
 - Multi-line text tool (font, size, bold, brush color)
-- Pan (space-drag / middle-mouse) and cursor-anchored zoom (wheel)
-- Undo / redo, New canvas dialog, PNG export via native save dialog
-- Neumorphic dark UI in the spirit of the original
-- `touch-action: none` throughout so pen/touch input never gets hijacked as a gesture
+- Filters: grayscale, invert, sepia, blur, sharpen, brighten, darken, contrast ±, saturate, desaturate, hue shift
+- Layer effects: drop shadow, outer glow, stroke
+- Save / Open native `.inkforge` project files (layers preserved); PNG export
+- Pan (space-drag / middle-mouse) and cursor-anchored zoom (wheel), undo / redo
+- Neumorphic dark UI; `touch-action: none` so pen/touch never gets hijacked as a gesture
 
 ## Run in development
 ```bash

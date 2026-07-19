@@ -195,4 +195,11 @@ dialog .row label { font-size: 12px; color: var(--text-dim); }
 dialog .row input, dialog .row select { width: 150px; background: var(--bg-2); color: var(--text); border: none; border-radius: 8px; padding: 7px; }
 dialog .row.full { display: block; }
 dialog textarea { width: 100%; background: var(--bg-2); color: var(--text); border: none; border-radius: 8px; padding: 8px; resize: vertical; font-size: 13px; font-family: inherit; }
+dialog h3 .dim { color: var(--text-dim); font-weight: 400; font-size: 12px; }
+.chip-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 16px; }
+.chip { border: none; border-radius: 9px; padding: 10px 6px; background: var(--bg-2); color: var(--text); cursor: pointer; font-size: 12px;
+  box-shadow: 2px 2px 5px var(--shadow-dark), -2px -2px 5px var(--shadow-light); transition: all .12s; }
+.chip:hover { color: var(--accent); }
+.chip:active { box-shadow: inset 2px 2px 4px var(--shadow-dark); }
+#filters-dialog, #effects-dialog { width: 340px; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }

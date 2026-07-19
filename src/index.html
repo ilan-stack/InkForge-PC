@@ -13,12 +13,15 @@
       <div class="brand">◈</div>
       <button class="tool" data-tool="brush" title="Brush (B)">✎</button>
       <button class="tool" data-tool="eraser" title="Eraser (E)">⌫</button>
+      <button class="tool" data-tool="smudge" title="Smudge (S)">👆</button>
+      <button class="tool" data-tool="liquify" title="Liquify (W)">🌀</button>
       <button class="tool" data-tool="fill" title="Fill (G)">🪣</button>
       <button class="tool" data-tool="eyedropper" title="Eyedropper (I)">💧</button>
       <button class="tool" data-tool="line" title="Line (L)">╱</button>
       <button class="tool" data-tool="rect" title="Rectangle (R)">▭</button>
       <button class="tool" data-tool="ellipse" title="Ellipse (O)">◯</button>
       <button class="tool" data-tool="text" title="Text (T)">T</button>
+      <button class="tool" data-tool="select" title="Select (M)">⬚</button>
       <button class="tool" data-tool="move" title="Move Layer (V)">✥</button>
       <button class="tool" data-tool="pan" title="Pan (Space)">✋</button>
       <div class="rail-spacer"></div>
@@ -53,6 +56,12 @@
         <button id="btn-fit" class="btn">Fit</button>
       </div>
       <div class="group">
+        <button id="btn-filters" class="btn">Filters</button>
+        <button id="btn-effects" class="btn">Effects</button>
+      </div>
+      <div class="group">
+        <button id="btn-open" class="btn">Open</button>
+        <button id="btn-save" class="btn">Save</button>
         <button id="btn-new" class="btn">New</button>
         <button id="btn-export" class="btn primary">Export PNG</button>
       </div>
@@ -144,6 +153,46 @@
         <button value="cancel" class="btn">Cancel</button>
         <button value="ok" class="btn primary" id="tx-ok">Add</button>
       </div>
+    </form>
+  </dialog>
+
+  <!-- Filters dialog -->
+  <dialog id="filters-dialog">
+    <form method="dialog">
+      <h3>Filters <span class="dim">· active layer</span></h3>
+      <div class="chip-grid">
+        <button type="button" class="chip" data-filter="grayscale">Grayscale</button>
+        <button type="button" class="chip" data-filter="invert">Invert</button>
+        <button type="button" class="chip" data-filter="sepia">Sepia</button>
+        <button type="button" class="chip" data-filter="blur">Blur</button>
+        <button type="button" class="chip" data-filter="sharpen">Sharpen</button>
+        <button type="button" class="chip" data-filter="brighten">Brighten</button>
+        <button type="button" class="chip" data-filter="darken">Darken</button>
+        <button type="button" class="chip" data-filter="contrast-up">Contrast +</button>
+        <button type="button" class="chip" data-filter="contrast-down">Contrast −</button>
+        <button type="button" class="chip" data-filter="saturate">Saturate</button>
+        <button type="button" class="chip" data-filter="desaturate">Desaturate</button>
+        <button type="button" class="chip" data-filter="hue">Hue Shift</button>
+      </div>
+      <div class="row"><label>Amount <span id="fx-amt-val">100</span>%</label>
+        <input type="range" id="fx-amt" min="0" max="200" value="100" /></div>
+      <div class="dialog-actions"><button value="cancel" class="btn">Close</button></div>
+    </form>
+  </dialog>
+
+  <!-- Effects dialog -->
+  <dialog id="effects-dialog">
+    <form method="dialog">
+      <h3>Layer Effects <span class="dim">· active layer</span></h3>
+      <div class="chip-grid">
+        <button type="button" class="chip" data-effect="shadow">Drop Shadow</button>
+        <button type="button" class="chip" data-effect="glow">Outer Glow</button>
+        <button type="button" class="chip" data-effect="stroke">Stroke</button>
+      </div>
+      <div class="row"><label>Size <span id="ef-size-val">12</span>px</label>
+        <input type="range" id="ef-size" min="1" max="60" value="12" /></div>
+      <div class="row"><label>Color</label><input type="color" id="ef-color" value="#000000" /></div>
+      <div class="dialog-actions"><button value="cancel" class="btn">Close</button></div>
     </form>
   </dialog>
 

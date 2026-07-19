@@ -90,6 +90,32 @@ function composite() {
   }
   vctx.globalAlpha = 1;
   vctx.globalCompositeOperation = 'source-over';
+  if (selection && selection.w && selection.h) drawAnts();
+}
+
+function drawAnts() {
+  const s = selection;
+  vctx.save();
+  vctx.lineWidth = 1;
+  vctx.setLineDash([6, 4]);
+  vctx.strokeStyle = '#000';
+  vctx.lineDashOffset = -antsOffset;
+  vctx.strokeRect(s.x + 0.5, s.y + 0.5, s.w, s.h);
+  vctx.strokeStyle = '#fff';
+  vctx.lineDashOffset = -antsOffset + 5;
+  vctx.strokeRect(s.x + 0.5, s.y + 0.5, s.w, s.h);
+  vctx.restore();
+}
+
+// Animate marching ants only when a selection is idle (no active drag)
+let antsTick = 0;
+function antsLoop() {
+  requestAnimationFrame(antsLoop);
+  if (!(selection && selection.w && selection.h)) return;
+  if (stroke || smear || shape || selDrag || moving || panning) return;
+  if (++antsTick % 5 !== 0) return;
+  antsOffset = (antsOffset + 2) % 10;
+  composite();
 }
 
 // ---------------------------------------------------------------- Brush engine
@@ -134,6 +160,11 @@ class Stroke {
     this.ctx.globalCompositeOperation =
       tool === 'eraser' ? 'destination-out' : 'source-over';
     this.ctx.globalAlpha = brush.opacity;
+    if (selection && selection.w && selection.h) {
+      this.ctx.beginPath();
+      this.ctx.rect(selection.x, selection.y, selection.w, selection.h);
+      this.ctx.clip();
+    }
     // build the soft tip once for this stroke (128px), scaled per stamp
     this.tip = makeStampTip(128, this.rgb, brush.hardness);
   }
@@ -230,19 +261,148 @@ let moveStart = null;
 let spaceDown = false;
 let shape = null;            // { start:{x,y}, snap } while dragging a shape
 let pendingTextPos = null;   // doc-space anchor for the text dialog
+let selection = null;        // { x, y, w, h } in doc coords, or null
+let selDrag = null;          // { start:{x,y} } while dragging a marquee
+let smear = null;            // { tip, last } while smudge/liquify dragging
+let antsOffset = 0;          // marching-ants animation phase
+
+// ---- Image-op helpers (disc sampling for smudge/liquify, filters, effects) ----
+// Copy a soft-edged circular disc of radius r from src centered at (cx,cy)
+function sampleDisc(src, cx, cy, r) {
+  const d = Math.max(2, Math.ceil(r * 2));
+  const c = document.createElement('canvas');
+  c.width = c.height = d;
+  const cx2 = c.getContext('2d', { willReadFrequently: true });
+  cx2.drawImage(src, cx - r, cy - r, d, d, 0, 0, d, d);
+  // soft radial alpha mask
+  cx2.globalCompositeOperation = 'destination-in';
+  const g = cx2.createRadialGradient(r, r, r * 0.25, r, r, r);
+  g.addColorStop(0, 'rgba(0,0,0,1)');
+  g.addColorStop(1, 'rgba(0,0,0,0)');
+  cx2.fillStyle = g;
+  cx2.beginPath(); cx2.arc(r, r, r, 0, Math.PI * 2); cx2.fill();
+  return c;
+}
+
+// Solid-color silhouette of a canvas's alpha (for stroke/glow effects)
+function silhouette(src, color) {
+  const c = document.createElement('canvas');
+  c.width = src.width; c.height = src.height;
+  const cx = c.getContext('2d');
+  cx.drawImage(src, 0, 0);
+  cx.globalCompositeOperation = 'source-in';
+  cx.fillStyle = color;
+  cx.fillRect(0, 0, c.width, c.height);
+  return c;
+}
+
+// Destructively apply a filter to the active layer
+function applyFilter(type, amount) {
+  const layer = doc.layer;
+  const w = doc.width, h = doc.height;
+  const snap = document.createElement('canvas');
+  snap.width = w; snap.height = h;
+  snap.getContext('2d').drawImage(layer.canvas, 0, 0);
+  const ctx = layer.ctx;
+  const a = amount / 100;
+  const filters = {
+    grayscale: `grayscale(${a})`,
+    invert: `invert(${a})`,
+    sepia: `sepia(${a})`,
+    blur: `blur(${(a * 8).toFixed(2)}px)`,
+    brighten: `brightness(${1 + a * 0.4})`,
+    darken: `brightness(${1 - a * 0.4})`,
+    'contrast-up': `contrast(${1 + a * 0.5})`,
+    'contrast-down': `contrast(${1 - a * 0.5})`,
+    saturate: `saturate(${1 + a})`,
+    desaturate: `saturate(${1 - a})`,
+    hue: `hue-rotate(${a * 180}deg)`
+  };
+  history.push(layer);
+  if (type === 'sharpen') { sharpenLayer(ctx, w, h, a); }
+  else {
+    ctx.clearRect(0, 0, w, h);
+    ctx.filter = filters[type] || 'none';
+    ctx.drawImage(snap, 0, 0);
+    ctx.filter = 'none';
+  }
+  composite(); updateThumb(doc.active);
+}
+
+// 3x3 unsharp-ish convolution
+function sharpenLayer(ctx, w, h, strength) {
+  const src = ctx.getImageData(0, 0, w, h);
+  const out = ctx.createImageData(w, h);
+  const s = src.data, o = out.data;
+  const k = strength; // center weight boost
+  const idx = (x, y) => (y * w + x) * 4;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = idx(x, y);
+      for (let ch = 0; ch < 3; ch++) {
+        const c = s[i + ch];
+        let sum = c * (1 + 4 * k);
+        if (x > 0) sum -= s[idx(x - 1, y) + ch] * k;
+        if (x < w - 1) sum -= s[idx(x + 1, y) + ch] * k;
+        if (y > 0) sum -= s[idx(x, y - 1) + ch] * k;
+        if (y < h - 1) sum -= s[idx(x, y + 1) + ch] * k;
+        o[i + ch] = clamp(sum, 0, 255);
+      }
+      o[i + 3] = s[i + 3];
+    }
+  }
+  ctx.putImageData(out, 0, 0);
+}
+
+// Destructively apply a layer effect to the active layer
+function applyEffect(type, size, color) {
+  const layer = doc.layer;
+  const w = doc.width, h = doc.height;
+  const original = document.createElement('canvas');
+  original.width = w; original.height = h;
+  original.getContext('2d').drawImage(layer.canvas, 0, 0);
+  const ctx = layer.ctx;
+  history.push(layer);
+  ctx.clearRect(0, 0, w, h);
+  if (type === 'shadow') {
+    ctx.save();
+    ctx.shadowColor = color; ctx.shadowBlur = size;
+    ctx.shadowOffsetX = size * 0.6; ctx.shadowOffsetY = size * 0.6;
+    ctx.drawImage(original, 0, 0);
+    ctx.restore();
+    ctx.drawImage(original, 0, 0);
+  } else if (type === 'glow') {
+    const sil = silhouette(original, color);
+    ctx.save();
+    ctx.shadowColor = color; ctx.shadowBlur = size;
+    for (let i = 0; i < 3; i++) ctx.drawImage(sil, 0, 0);
+    ctx.restore();
+    ctx.drawImage(original, 0, 0);
+  } else if (type === 'stroke') {
+    const sil = silhouette(original, color);
+    for (let a = 0; a < Math.PI * 2; a += Math.PI / 8) {
+      ctx.drawImage(sil, Math.cos(a) * size, Math.sin(a) * size);
+    }
+    ctx.drawImage(original, 0, 0);
+  }
+  composite(); updateThumb(doc.active);
+}
 
 function setTool(t) {
   tool = t;
   document.querySelectorAll('.tool[data-tool]').forEach(b =>
     b.classList.toggle('active', b.dataset.tool === t));
   $('#status-tool').textContent = t[0].toUpperCase() + t.slice(1);
-  const crosshair = ['line', 'rect', 'ellipse', 'text'].includes(t);
+  const crosshair = ['line', 'rect', 'ellipse', 'text', 'select'].includes(t);
   view.style.cursor = (t === 'pan') ? 'grab' : (crosshair ? 'crosshair' : 'none');
 }
 
 // Draw a shape preview/commit onto a layer context (doc coords)
 function drawShape(ctx, kind, x0, y0, x1, y1, shift) {
   ctx.save();
+  if (selection && selection.w && selection.h) {
+    ctx.beginPath(); ctx.rect(selection.x, selection.y, selection.w, selection.h); ctx.clip();
+  }
   ctx.strokeStyle = brush.color;
   ctx.lineWidth = Math.max(1, brush.size);
   ctx.lineCap = 'round';
@@ -328,6 +488,17 @@ view.addEventListener('pointerdown', (e) => {
     $('#text-dialog').showModal();
     return;
   }
+  if (tool === 'select') {
+    selDrag = { start: { x: p.x, y: p.y } };
+    selection = { x: p.x, y: p.y, w: 0, h: 0 };
+    return;
+  }
+  if (tool === 'smudge' || tool === 'liquify') {
+    history.push(doc.layer);
+    const r = Math.max(1, brush.size / 2);
+    smear = { last: { x: p.x, y: p.y }, tip: sampleDisc(doc.layer.canvas, p.x, p.y, r), r };
+    return;
+  }
   // brush / eraser
   history.push(doc.layer);
   stroke = new Stroke(tool);
@@ -356,6 +527,32 @@ view.addEventListener('pointermove', (e) => {
     drawShape(ctx, tool, shape.start.x, shape.start.y, p.x, p.y, e.shiftKey);
     composite(); return;
   }
+  if (selDrag) {
+    const x0 = selDrag.start.x, y0 = selDrag.start.y;
+    selection = { x: Math.min(x0, p.x), y: Math.min(y0, p.y), w: Math.abs(p.x - x0), h: Math.abs(p.y - y0) };
+    composite(); return;
+  }
+  if (smear) {
+    const ctx = doc.layer.ctx;
+    const r = smear.r;
+    const coalesced = e.getCoalescedEvents ? e.getCoalescedEvents() : [];
+    const events = coalesced.length ? coalesced : [e];
+    for (const ce of events) {
+      const cp = toDoc(ce.clientX, ce.clientY);
+      if (tool === 'smudge') {
+        ctx.globalAlpha = 0.55 * brush.opacity;
+        ctx.drawImage(smear.tip, cp.x - r, cp.y - r);
+        smear.tip = sampleDisc(doc.layer.canvas, cp.x, cp.y, r);
+      } else { // liquify push: drag a copy of trailing pixels toward the cursor
+        const sample = sampleDisc(doc.layer.canvas, smear.last.x, smear.last.y, r);
+        ctx.globalAlpha = 0.85;
+        ctx.drawImage(sample, cp.x - r, cp.y - r);
+      }
+      smear.last = { x: cp.x, y: cp.y };
+    }
+    ctx.globalAlpha = 1;
+    composite(); return;
+  }
   if (stroke) {
     const pressure = (e.pointerType === 'pen') ? e.pressure : 1;
     // coalesced events give smoother, higher-rate strokes;
@@ -375,6 +572,12 @@ function endPointer() {
   if (stroke) { stroke.end(); stroke = null; updateThumb(doc.active); }
   if (moving) { moving = false; updateThumb(doc.active); }
   if (shape) { shape = null; updateThumb(doc.active); }
+  if (smear) { smear = null; updateThumb(doc.active); }
+  if (selDrag) {
+    selDrag = null;
+    if (selection && (selection.w < 3 || selection.h < 3)) selection = null;
+    composite();
+  }
   if (panning) { panning = false; view.style.cursor = (tool === 'pan') ? 'grab' : 'none'; }
 }
 view.addEventListener('pointerup', endPointer);
@@ -397,7 +600,7 @@ stage.addEventListener('wheel', (e) => {
 // Cursor ring shows brush size
 function updateCursorRing(clientX, clientY) {
   const ring = $('#cursor-ring');
-  if (!['brush', 'eraser'].includes(tool)) { ring.style.display = 'none'; return; }
+  if (!['brush', 'eraser', 'smudge', 'liquify'].includes(tool)) { ring.style.display = 'none'; return; }
   const r = brush.size * cam.scale;
   ring.style.display = 'block';
   ring.style.width = ring.style.height = r + 'px';
@@ -460,6 +663,7 @@ function newDocument(w, h, bg) {
   doc.layers = []; doc.active = 0;
   view.width = w; view.height = h;
   Layer._id = 1;
+  selection = null;
   const base = addLayer('Background', true);
   if (bg && bg !== 'transparent') {
     base.ctx.fillStyle = bg;
@@ -492,6 +696,52 @@ async function exportPng() {
   }
 }
 
+// ---------------------------------------------------------------- Save / Load
+async function saveProject() {
+  const data = {
+    version: 1, width: doc.width, height: doc.height, active: doc.active,
+    layers: doc.layers.map(l => ({
+      name: l.name, visible: l.visible, opacity: l.opacity, blend: l.blend,
+      png: l.canvas.toDataURL()
+    }))
+  };
+  const json = JSON.stringify(data);
+  if (window.inkforge?.saveProject) await window.inkforge.saveProject(json);
+  else { // browser fallback
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+    a.download = 'artwork.inkforge'; a.click();
+  }
+}
+async function openProject() {
+  if (!window.inkforge?.openProject) return;
+  const json = await window.inkforge.openProject();
+  if (!json) return;
+  await loadProjectJson(json);
+}
+async function loadProjectJson(json) {
+  const data = JSON.parse(json);
+  doc.width = data.width; doc.height = data.height;
+  view.width = data.width; view.height = data.height;
+  doc.layers = []; Layer._id = 1;
+  for (const ld of data.layers) {
+    const l = new Layer(doc.width, doc.height, ld.name);
+    l.visible = ld.visible; l.opacity = ld.opacity; l.blend = ld.blend;
+    await new Promise((res) => {
+      const img = new Image();
+      img.onload = () => { l.ctx.drawImage(img, 0, 0); res(); };
+      img.onerror = res;
+      img.src = ld.png;
+    });
+    doc.layers.push(l);
+  }
+  doc.active = clamp(data.active || 0, 0, doc.layers.length - 1);
+  selection = null;
+  history.stack.length = 0; history.redoStack.length = 0;
+  $('#status-doc').textContent = `${doc.width} × ${doc.height}`;
+  fitToScreen(); composite(); renderLayerList();
+}
+
 // ---------------------------------------------------------------- UI wiring
 function bindUI() {
   document.querySelectorAll('.tool[data-tool]').forEach(b =>
@@ -521,6 +771,16 @@ function bindUI() {
   $('#btn-export').addEventListener('click', exportPng);
   $('#btn-new').addEventListener('click', () => $('#new-dialog').showModal());
   $('#tx-ok').addEventListener('click', () => setTimeout(commitText, 0));
+  $('#btn-save').addEventListener('click', saveProject);
+  $('#btn-open').addEventListener('click', openProject);
+  $('#btn-filters').addEventListener('click', () => $('#filters-dialog').showModal());
+  $('#btn-effects').addEventListener('click', () => $('#effects-dialog').showModal());
+  $('#fx-amt').addEventListener('input', e => $('#fx-amt-val').textContent = e.target.value);
+  document.querySelectorAll('#filters-dialog .chip').forEach(ch =>
+    ch.addEventListener('click', () => applyFilter(ch.dataset.filter, +$('#fx-amt').value)));
+  $('#ef-size').addEventListener('input', e => $('#ef-size-val').textContent = e.target.value);
+  document.querySelectorAll('#effects-dialog .chip').forEach(ch =>
+    ch.addEventListener('click', () => applyEffect(ch.dataset.effect, +$('#ef-size').value, $('#ef-color').value)));
   $('#text-dialog').addEventListener('close', () => {
     if ($('#text-dialog').returnValue !== 'ok') { pendingTextPos = null; $('#tx-text').value = ''; }
   });
@@ -542,9 +802,18 @@ function bindUI() {
     if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? history.redo() : history.undo(); return; }
     if (mod && e.key.toLowerCase() === 'e') { e.preventDefault(); exportPng(); return; }
     if (mod && e.key.toLowerCase() === 'n') { e.preventDefault(); $('#new-dialog').showModal(); return; }
+    if (mod && e.key.toLowerCase() === 's') { e.preventDefault(); saveProject(); return; }
+    if (mod && e.key.toLowerCase() === 'o') { e.preventDefault(); openProject(); return; }
+    if (mod && e.key.toLowerCase() === 'a') { e.preventDefault(); selection = { x: 0, y: 0, w: doc.width, h: doc.height }; composite(); return; }
+    if (mod && e.key.toLowerCase() === 'd') { e.preventDefault(); selection = null; composite(); return; }
     if (mod && e.key === '0') { e.preventDefault(); fitToScreen(); return; }
+    if ((e.key === 'Delete' || e.key === 'Backspace') && selection && selection.w && selection.h) {
+      e.preventDefault(); history.push(doc.layer);
+      doc.layer.ctx.clearRect(selection.x, selection.y, selection.w, selection.h);
+      composite(); updateThumb(doc.active); return;
+    }
     const map = { b: 'brush', e: 'eraser', g: 'fill', i: 'eyedropper', v: 'move', h: 'pan',
-                  l: 'line', r: 'rect', o: 'ellipse', t: 'text' };
+                  l: 'line', r: 'rect', o: 'ellipse', t: 'text', s: 'smudge', w: 'liquify', m: 'select' };
     if (!mod && map[e.key.toLowerCase()]) setTool(map[e.key.toLowerCase()]);
     if (e.key === '[') { brush.size = clamp(brush.size - 2, 1, 400); $('#size').value = brush.size; $('#size-val').textContent = brush.size; }
     if (e.key === ']') { brush.size = clamp(brush.size + 2, 1, 400); $('#size').value = brush.size; $('#size-val').textContent = brush.size; }
@@ -556,6 +825,8 @@ function bindUI() {
   // Electron menu hooks
   if (window.inkforge?.onMenu) {
     window.inkforge.onMenu('menu:new', () => $('#new-dialog').showModal());
+    window.inkforge.onMenu('menu:open', openProject);
+    window.inkforge.onMenu('menu:save', saveProject);
     window.inkforge.onMenu('menu:export', exportPng);
     window.inkforge.onMenu('menu:undo', () => history.undo());
     window.inkforge.onMenu('menu:redo', () => history.redo());
@@ -568,3 +839,4 @@ function bindUI() {
 bindUI();
 setTool('brush');
 newDocument(1920, 1080, '#ffffff');
+requestAnimationFrame(antsLoop);
