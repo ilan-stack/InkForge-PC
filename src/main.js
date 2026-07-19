@@ -94,6 +94,17 @@ ipcMain.handle('open-project', async () => {
   return fs.readFileSync(filePaths[0], 'utf8');
 });
 
+ipcMain.handle('save-file', async (_evt, { defaultName, ext, base64 }) => {
+  const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
+    title: 'Export',
+    defaultPath: defaultName,
+    filters: [{ name: (ext || 'file').toUpperCase(), extensions: [ext || 'bin'] }]
+  });
+  if (canceled || !filePath) return { ok: false };
+  fs.writeFileSync(filePath, Buffer.from(base64, 'base64'));
+  return { ok: true, filePath };
+});
+
 app.whenReady().then(createWindow);
 
 app.on('window-all-closed', () => {

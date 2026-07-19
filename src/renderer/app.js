@@ -23,8 +23,12 @@ Layer._id = 1;
 const doc = {
   width: 1920,
   height: 1080,
-  layers: [],
+  frames: [{ layers: [] }],
+  frame: 0,
   active: 0,
+  fps: 12,
+  get layers() { return this.frames[this.frame].layers; },
+  set layers(v) { this.frames[this.frame].layers = v; },
   get layer() { return this.layers[this.active]; }
 };
 
@@ -82,6 +86,11 @@ function toDoc(clientX, clientY) {
 // ---------------------------------------------------------------- Compositing
 function composite() {
   vctx.clearRect(0, 0, view.width, view.height);
+  if (onionSkin && !playing && doc.frame > 0) {
+    vctx.globalAlpha = 0.28;
+    vctx.drawImage(flattenFrame(doc.frame - 1), 0, 0);
+    vctx.globalAlpha = 1;
+  }
   for (const l of doc.layers) {
     if (!l.visible || l.opacity <= 0) continue;
     vctx.globalAlpha = l.opacity;
@@ -265,6 +274,23 @@ let selection = null;        // { x, y, w, h } in doc coords, or null
 let selDrag = null;          // { start:{x,y} } while dragging a marquee
 let smear = null;            // { tip, last } while smudge/liquify dragging
 let antsOffset = 0;          // marching-ants animation phase
+let playing = false;         // animation playback active
+let onionSkin = false;       // show previous frame as a ghost
+let playTimer = null;
+
+// Flatten one frame's visible layers to a standalone canvas
+function flattenFrame(fi) {
+  const frame = doc.frames[fi];
+  const c = document.createElement('canvas');
+  c.width = doc.width; c.height = doc.height;
+  const cx = c.getContext('2d');
+  for (const l of frame.layers) {
+    if (!l.visible || l.opacity <= 0) continue;
+    cx.globalAlpha = l.opacity; cx.globalCompositeOperation = l.blend;
+    cx.drawImage(l.canvas, 0, 0);
+  }
+  return c;
+}
 
 // ---- Image-op helpers (disc sampling for smudge/liquify, filters, effects) ----
 // Copy a soft-edged circular disc of radius r from src centered at (cx,cy)
@@ -660,7 +686,7 @@ function syncLayerControls() {
 // ---------------------------------------------------------------- New document
 function newDocument(w, h, bg) {
   doc.width = w; doc.height = h;
-  doc.layers = []; doc.active = 0;
+  doc.frames = [{ layers: [] }]; doc.frame = 0; doc.active = 0;
   view.width = w; view.height = h;
   Layer._id = 1;
   selection = null;
@@ -672,7 +698,7 @@ function newDocument(w, h, bg) {
   addLayer('Layer 1', true);
   $('#status-doc').textContent = `${w} × ${h}`;
   history.stack.length = 0; history.redoStack.length = 0;
-  fitToScreen(); composite(); renderLayerList();
+  fitToScreen(); composite(); renderLayerList(); renderFrameList(); updateFrameStatus();
 }
 
 // ---------------------------------------------------------------- Export
@@ -699,10 +725,13 @@ async function exportPng() {
 // ---------------------------------------------------------------- Save / Load
 async function saveProject() {
   const data = {
-    version: 1, width: doc.width, height: doc.height, active: doc.active,
-    layers: doc.layers.map(l => ({
-      name: l.name, visible: l.visible, opacity: l.opacity, blend: l.blend,
-      png: l.canvas.toDataURL()
+    version: 2, width: doc.width, height: doc.height, fps: doc.fps,
+    frame: doc.frame, active: doc.active,
+    frames: doc.frames.map(fr => ({
+      layers: fr.layers.map(l => ({
+        name: l.name, visible: l.visible, opacity: l.opacity, blend: l.blend,
+        png: l.canvas.toDataURL()
+      }))
     }))
   };
   const json = JSON.stringify(data);
@@ -721,25 +750,279 @@ async function openProject() {
 }
 async function loadProjectJson(json) {
   const data = JSON.parse(json);
+  stopPlay();
   doc.width = data.width; doc.height = data.height;
+  doc.fps = data.fps || 12;
   view.width = data.width; view.height = data.height;
-  doc.layers = []; Layer._id = 1;
-  for (const ld of data.layers) {
+  Layer._id = 1;
+  // v1 projects stored a flat `layers` array; v2 stores `frames`
+  const srcFrames = data.frames || [{ layers: data.layers || [] }];
+  const buildLayer = (ld) => new Promise((res) => {
     const l = new Layer(doc.width, doc.height, ld.name);
     l.visible = ld.visible; l.opacity = ld.opacity; l.blend = ld.blend;
-    await new Promise((res) => {
-      const img = new Image();
-      img.onload = () => { l.ctx.drawImage(img, 0, 0); res(); };
-      img.onerror = res;
-      img.src = ld.png;
-    });
-    doc.layers.push(l);
+    const img = new Image();
+    img.onload = () => { l.ctx.drawImage(img, 0, 0); res(l); };
+    img.onerror = () => res(l);
+    img.src = ld.png;
+  });
+  doc.frames = [];
+  for (const fr of srcFrames) {
+    const layers = [];
+    for (const ld of fr.layers) layers.push(await buildLayer(ld));
+    doc.frames.push({ layers });
   }
+  if (!doc.frames.length) doc.frames = [newFrame(null)];
+  doc.frame = clamp(data.frame || 0, 0, doc.frames.length - 1);
   doc.active = clamp(data.active || 0, 0, doc.layers.length - 1);
   selection = null;
   history.stack.length = 0; history.redoStack.length = 0;
+  $('#tl-fps').value = doc.fps;
   $('#status-doc').textContent = `${doc.width} × ${doc.height}`;
-  fitToScreen(); composite(); renderLayerList();
+  fitToScreen(); composite(); renderLayerList(); renderFrameList(); updateFrameStatus();
+}
+
+// ---------------------------------------------------------------- Brush presets
+const BRUSH_PRESETS = {
+  Pencil:   { size: 4,  hardness: 0.95, opacity: 1 },
+  Ink:      { size: 10, hardness: 0.9,  opacity: 1 },
+  Marker:   { size: 26, hardness: 0.6,  opacity: 0.85 },
+  Airbrush: { size: 60, hardness: 0.08, opacity: 0.25 },
+  Soft:     { size: 80, hardness: 0.25, opacity: 0.8 }
+};
+function applyPreset(name) {
+  const p = BRUSH_PRESETS[name]; if (!p) return;
+  brush.size = p.size; brush.hardness = p.hardness; brush.opacity = p.opacity;
+  $('#size').value = p.size; $('#size-val').textContent = p.size;
+  $('#opacity').value = Math.round(p.opacity * 100); $('#opacity-val').textContent = Math.round(p.opacity * 100);
+  $('#hardness').value = Math.round(p.hardness * 100); $('#hardness-val').textContent = Math.round(p.hardness * 100);
+  if (tool !== 'brush') setTool('brush');
+}
+
+// ---------------------------------------------------------------- Animation
+function newFrame(copyFrom) {
+  const layers = [];
+  if (copyFrom) {
+    for (const l of copyFrom.layers) {
+      const nl = new Layer(doc.width, doc.height, l.name);
+      nl.visible = l.visible; nl.opacity = l.opacity; nl.blend = l.blend;
+      nl.ctx.drawImage(l.canvas, 0, 0);
+      layers.push(nl);
+    }
+  } else {
+    layers.push(new Layer(doc.width, doc.height, 'Layer 1'));
+  }
+  return { layers };
+}
+function addFrame(duplicate) {
+  doc.frames.splice(doc.frame + 1, 0, newFrame(duplicate ? doc.frames[doc.frame] : null));
+  doc.frame++; doc.active = 0;
+  composite(); renderLayerList(); renderFrameList(); updateFrameStatus();
+}
+function deleteFrame() {
+  if (doc.frames.length <= 1) return;
+  doc.frames.splice(doc.frame, 1);
+  doc.frame = clamp(doc.frame, 0, doc.frames.length - 1);
+  doc.active = clamp(doc.active, 0, doc.layers.length - 1);
+  composite(); renderLayerList(); renderFrameList(); updateFrameStatus();
+}
+function selectFrame(i) {
+  doc.frame = clamp(i, 0, doc.frames.length - 1);
+  doc.active = clamp(doc.active, 0, doc.layers.length - 1);
+  composite(); renderLayerList(); renderFrameList(); updateFrameStatus();
+}
+function renderFrameList() {
+  const list = $('#frame-list'); if (!list) return;
+  list.innerHTML = '';
+  doc.frames.forEach((f, i) => {
+    const li = document.createElement('li');
+    li.className = 'frame-item' + (i === doc.frame ? ' selected' : '');
+    li.innerHTML = `<div class="fthumb" style="background-image:url(${flattenFrame(i).toDataURL()})"></div><div class="fnum">${i + 1}</div>`;
+    li.addEventListener('click', () => selectFrame(i));
+    list.appendChild(li);
+  });
+}
+function highlightFrame() {
+  document.querySelectorAll('#frame-list .frame-item').forEach((el, i) => el.classList.toggle('selected', i === doc.frame));
+}
+function updateFrameStatus() { $('#status-frame').textContent = `Frame ${doc.frame + 1}/${doc.frames.length}`; }
+function togglePlay() { playing ? stopPlay() : startPlay(); }
+function startPlay() {
+  if (doc.frames.length < 2) return;
+  playing = true; $('#tl-play').textContent = '⏸';
+  let f = doc.frame;
+  playTimer = setInterval(() => {
+    f = (f + 1) % doc.frames.length;
+    doc.frame = f; composite(); highlightFrame(); updateFrameStatus();
+  }, 1000 / doc.fps);
+}
+function stopPlay() {
+  playing = false; $('#tl-play').textContent = '▶';
+  if (playTimer) { clearInterval(playTimer); playTimer = null; }
+}
+
+async function exportGif() {
+  stopPlay();
+  const delayCs = Math.max(2, Math.round(100 / doc.fps));
+  const canvases = doc.frames.map((_, i) => flattenFrame(i));
+  const bytes = buildGif(canvases, delayCs);
+  await saveBinary(bytes, 'animation.gif', 'gif');
+}
+async function exportWebm() {
+  stopPlay();
+  if (!window.MediaRecorder) return;
+  const c = document.createElement('canvas'); c.width = doc.width; c.height = doc.height;
+  const cx = c.getContext('2d');
+  const stream = c.captureStream(doc.fps);
+  const rec = new MediaRecorder(stream, { mimeType: 'video/webm' });
+  const chunks = []; rec.ondataavailable = e => e.data.size && chunks.push(e.data);
+  const done = new Promise(res => { rec.onstop = res; });
+  rec.start();
+  for (let f = 0; f < doc.frames.length; f++) {
+    cx.fillStyle = '#fff'; cx.fillRect(0, 0, c.width, c.height);
+    cx.drawImage(flattenFrame(f), 0, 0);
+    await new Promise(r => setTimeout(r, 1000 / doc.fps));
+  }
+  rec.stop(); await done;
+  const buf = new Uint8Array(await new Blob(chunks, { type: 'video/webm' }).arrayBuffer());
+  await saveBinary(buf, 'animation.webm', 'webm');
+}
+
+// Write raw bytes to disk (native dialog in Electron, download in browser)
+async function saveBinary(bytes, defaultName, ext) {
+  let binary = '';
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+  const base64 = btoa(binary);
+  if (window.inkforge?.saveFile) await window.inkforge.saveFile({ defaultName, ext, base64 });
+  else { const a = document.createElement('a'); a.href = 'data:application/octet-stream;base64,' + base64; a.download = defaultName; a.click(); }
+}
+
+// ---------------------------------------------------------------- GIF89a encoder
+function buildGif(frameCanvases, delayCs) {
+  const w = doc.width, h = doc.height;
+  const framePixels = frameCanvases.map(c => c.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, w, h).data);
+  // sample opaque colors across all frames for a shared palette
+  const samples = [];
+  const total = w * h * framePixels.length;
+  const step = Math.max(1, Math.floor(total / 120000)) * 4;
+  for (const d of framePixels) {
+    for (let i = 0; i < d.length; i += step) {
+      if (d[i + 3] < 128) continue;
+      samples.push([d[i], d[i + 1], d[i + 2]]);
+    }
+  }
+  let palette = samples.length ? medianCut(samples, 255) : [[0, 0, 0]];
+  if (palette.length > 255) palette = palette.slice(0, 255);
+  const transIndex = palette.length;
+  const fullPalette = palette.slice();
+  while (fullPalette.length < 256) fullPalette.push([0, 0, 0]);
+
+  const cache = new Map();
+  const nearest = (r, g, b) => {
+    const key = (r << 16) | (g << 8) | b;
+    let idx = cache.get(key);
+    if (idx !== undefined) return idx;
+    let best = 0, bestD = Infinity;
+    for (let p = 0; p < palette.length; p++) {
+      const dr = r - palette[p][0], dg = g - palette[p][1], db = b - palette[p][2];
+      const dd = dr * dr + dg * dg + db * db;
+      if (dd < bestD) { bestD = dd; best = p; if (!dd) break; }
+    }
+    cache.set(key, best);
+    return best;
+  };
+  const indexed = framePixels.map(d => {
+    const out = new Uint8Array(w * h);
+    for (let px = 0, i = 0; px < out.length; px++, i += 4) {
+      out[px] = d[i + 3] < 128 ? transIndex : nearest(d[i], d[i + 1], d[i + 2]);
+    }
+    return out;
+  });
+
+  const bytes = [];
+  const pushStr = s => { for (let i = 0; i < s.length; i++) bytes.push(s.charCodeAt(i)); };
+  pushStr('GIF89a');
+  bytes.push(w & 255, (w >> 8) & 255, h & 255, (h >> 8) & 255, 0xF7, 0, 0);
+  for (const c of fullPalette) bytes.push(c[0], c[1], c[2]);
+  bytes.push(0x21, 0xFF, 0x0B);
+  pushStr('NETSCAPE2.0');
+  bytes.push(0x03, 0x01, 0x00, 0x00, 0x00);
+  for (let f = 0; f < indexed.length; f++) {
+    bytes.push(0x21, 0xF9, 0x04, 0x01, delayCs & 255, (delayCs >> 8) & 255, transIndex, 0x00);
+    bytes.push(0x2C, 0, 0, 0, 0, w & 255, (w >> 8) & 255, h & 255, (h >> 8) & 255, 0x00);
+    bytes.push(8);
+    const lzw = lzwEncode(indexed[f], 8);
+    for (let i = 0; i < lzw.length; i += 255) {
+      const end = Math.min(i + 255, lzw.length);
+      bytes.push(end - i);
+      for (let j = i; j < end; j++) bytes.push(lzw[j]);
+    }
+    bytes.push(0x00);
+  }
+  bytes.push(0x3B);
+  return new Uint8Array(bytes);
+}
+function medianCut(pixels, maxColors) {
+  const makeBox = (px) => {
+    let rmin = 255, rmax = 0, gmin = 255, gmax = 0, bmin = 255, bmax = 0, rs = 0, gs = 0, bs = 0;
+    for (const p of px) {
+      if (p[0] < rmin) rmin = p[0]; if (p[0] > rmax) rmax = p[0];
+      if (p[1] < gmin) gmin = p[1]; if (p[1] > gmax) gmax = p[1];
+      if (p[2] < bmin) bmin = p[2]; if (p[2] > bmax) bmax = p[2];
+      rs += p[0]; gs += p[1]; bs += p[2];
+    }
+    const rr = rmax - rmin, gr = gmax - gmin, br = bmax - bmin;
+    const n = px.length || 1;
+    return { pixels: px, range: Math.max(rr, gr, br), widest: (rr >= gr && rr >= br) ? 0 : (gr >= br ? 1 : 2),
+             avg: [Math.round(rs / n), Math.round(gs / n), Math.round(bs / n)] };
+  };
+  let boxes = [makeBox(pixels)];
+  while (boxes.length < maxColors) {
+    boxes.sort((a, b) => b.range - a.range);
+    const box = boxes[0];
+    if (!box || box.pixels.length < 2 || box.range === 0) break;
+    boxes.shift();
+    const ch = box.widest;
+    box.pixels.sort((p, q) => p[ch] - q[ch]);
+    const mid = box.pixels.length >> 1;
+    boxes.push(makeBox(box.pixels.slice(0, mid)));
+    boxes.push(makeBox(box.pixels.slice(mid)));
+  }
+  return boxes.map(b => b.avg);
+}
+function lzwEncode(indices, minCodeSize) {
+  const clearCode = 1 << minCodeSize;
+  const eoiCode = clearCode + 1;
+  let codeSize = minCodeSize + 1;
+  let dict, next;
+  const reset = () => { dict = new Map(); for (let i = 0; i < clearCode; i++) dict.set('' + i, i); next = eoiCode + 1; codeSize = minCodeSize + 1; };
+  const out = [];
+  let cur = 0, curBits = 0;
+  const write = (code) => {
+    cur |= code << curBits; curBits += codeSize;
+    while (curBits >= 8) { out.push(cur & 255); cur >>= 8; curBits -= 8; }
+  };
+  reset();
+  write(clearCode);
+  let prefix = '' + indices[0];
+  for (let i = 1; i < indices.length; i++) {
+    const k = indices[i];
+    const combined = prefix + ',' + k;
+    if (dict.has(combined)) { prefix = combined; }
+    else {
+      write(dict.get(prefix));
+      if (next < 4096) {
+        dict.set(combined, next);
+        if (next === (1 << codeSize) && codeSize < 12) codeSize++;
+        next++;
+      } else { write(clearCode); reset(); }
+      prefix = '' + k;
+    }
+  }
+  write(dict.get(prefix));
+  write(eoiCode);
+  if (curBits > 0) out.push(cur & 255);
+  return out;
 }
 
 // ---------------------------------------------------------------- UI wiring
@@ -756,6 +1039,23 @@ function bindUI() {
   sync('opacity', 'opacity-val', v => brush.opacity = v / 100);
   sync('hardness', 'hardness-val', v => brush.hardness = v / 100);
   $('#pressure').addEventListener('change', e => brush.usePressure = e.target.checked);
+  $('#preset').addEventListener('change', e => applyPreset(e.target.value));
+
+  // Timeline / animation
+  $('#btn-animate').addEventListener('click', () => {
+    const tl = $('#timeline');
+    tl.classList.toggle('hidden');
+    if (!tl.classList.contains('hidden')) { renderFrameList(); updateFrameStatus(); }
+    applyCam();
+  });
+  $('#tl-play').addEventListener('click', togglePlay);
+  $('#tl-add').addEventListener('click', () => addFrame(false));
+  $('#tl-dup').addEventListener('click', () => addFrame(true));
+  $('#tl-del').addEventListener('click', deleteFrame);
+  $('#tl-onion').addEventListener('change', e => { onionSkin = e.target.checked; composite(); });
+  $('#tl-fps').addEventListener('change', e => { doc.fps = clamp(+e.target.value || 12, 1, 60); });
+  $('#tl-gif').addEventListener('click', exportGif);
+  $('#tl-webm').addEventListener('click', exportWebm);
 
   $('#layer-opacity').addEventListener('input', e => {
     doc.layer.opacity = +e.target.value / 100;

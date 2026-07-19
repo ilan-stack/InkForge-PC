@@ -36,6 +36,17 @@
         <input type="color" id="color" value="#1a1a1a" />
       </div>
       <div class="group">
+        <label>Preset</label>
+        <select id="preset">
+          <option value="">Custom</option>
+          <option value="Pencil">Pencil</option>
+          <option value="Ink">Ink Pen</option>
+          <option value="Marker">Marker</option>
+          <option value="Airbrush">Airbrush</option>
+          <option value="Soft">Soft Round</option>
+        </select>
+      </div>
+      <div class="group">
         <label>Size <span id="size-val">12</span></label>
         <input type="range" id="size" min="1" max="400" value="12" />
       </div>
@@ -58,6 +69,7 @@
       <div class="group">
         <button id="btn-filters" class="btn">Filters</button>
         <button id="btn-effects" class="btn">Effects</button>
+        <button id="btn-animate" class="btn">Animate</button>
       </div>
       <div class="group">
         <button id="btn-open" class="btn">Open</button>
@@ -106,10 +118,26 @@
       <ul id="layer-list"></ul>
     </aside>
 
+    <section id="timeline" class="hidden">
+      <div class="tl-controls">
+        <button id="tl-play" title="Play / Stop">▶</button>
+        <button id="tl-add" title="Add frame">＋</button>
+        <button id="tl-dup" title="Duplicate frame">⎘</button>
+        <button id="tl-del" title="Delete frame">🗑</button>
+        <label class="tl-onion"><input type="checkbox" id="tl-onion" /> Onion</label>
+        <label>FPS <input type="number" id="tl-fps" value="12" min="1" max="60" /></label>
+        <div class="tl-grow"></div>
+        <button id="tl-gif" class="btn">Export GIF</button>
+        <button id="tl-webm" class="btn">Export WebM</button>
+      </div>
+      <ul id="frame-list"></ul>
+    </section>
+
     <footer id="statusbar">
       <span id="status-tool">Brush</span>
       <span id="status-pos">0, 0</span>
       <span id="status-doc">—</span>
+      <span id="status-frame"></span>
     </footer>
   </div>
 

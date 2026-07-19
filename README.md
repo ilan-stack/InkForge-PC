@@ -14,7 +14,10 @@ This is a ground-up port of the macOS-native (AppKit/CoreGraphics) InkForge, whi
 - Multi-line text tool (font, size, bold, brush color)
 - Filters: grayscale, invert, sepia, blur, sharpen, brighten, darken, contrast ±, saturate, desaturate, hue shift
 - Layer effects: drop shadow, outer glow, stroke
-- Save / Open native `.inkforge` project files (layers preserved); PNG export
+- Frame-by-frame **animation**: timeline with add / duplicate / delete, playback, onion-skinning, adjustable FPS
+- **GIF export** (built-in GIF89a encoder, median-cut palette) and **WebM export**
+- Brush presets: Pencil, Ink Pen, Marker, Airbrush, Soft Round
+- Save / Open native `.inkforge` project files (all frames + layers preserved); PNG export
 - Pan (space-drag / middle-mouse) and cursor-anchored zoom (wheel), undo / redo
 - Neumorphic dark UI; `touch-action: none` so pen/touch never gets hijacked as a gesture
 
