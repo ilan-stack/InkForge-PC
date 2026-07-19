@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>InkForge</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- Left tool rail -->
+    <aside id="toolrail">
+      <div class="brand">◈</div>
+      <button class="tool" data-tool="brush" title="Brush (B)">✎</button>
+      <button class="tool" data-tool="eraser" title="Eraser (E)">⌫</button>
+      <button class="tool" data-tool="fill" title="Fill (G)">🪣</button>
+      <button class="tool" data-tool="eyedropper" title="Eyedropper (I)">💧</button>
+      <button class="tool" data-tool="move" title="Move Layer (V)">✥</button>
+      <button class="tool" data-tool="pan" title="Pan (Space)">✋</button>
+      <div class="rail-spacer"></div>
+      <button class="tool ghost" id="btn-undo" title="Undo (Ctrl+Z)">↺</button>
+      <button class="tool ghost" id="btn-redo" title="Redo (Ctrl+Shift+Z)">↻</button>
+    </aside>
+
+    <!-- Top options bar -->
+    <header id="topbar">
+      <div class="group">
+        <label>Color</label>
+        <input type="color" id="color" value="#e8e8ea" />
+      </div>
+      <div class="group">
+        <label>Size <span id="size-val">12</span></label>
+        <input type="range" id="size" min="1" max="400" value="12" />
+      </div>
+      <div class="group">
+        <label>Opacity <span id="opacity-val">100</span>%</label>
+        <input type="range" id="opacity" min="1" max="100" value="100" />
+      </div>
+      <div class="group">
+        <label>Hardness <span id="hardness-val">80</span>%</label>
+        <input type="range" id="hardness" min="0" max="100" value="80" />
+      </div>
+      <div class="group toggle">
+        <label><input type="checkbox" id="pressure" checked /> Pen pressure</label>
+      </div>
+      <div class="group grow"></div>
+      <div class="group">
+        <span id="zoom-label" class="pill">100%</span>
+        <button id="btn-fit" class="btn">Fit</button>
+      </div>
+      <div class="group">
+        <button id="btn-new" class="btn">New</button>
+        <button id="btn-export" class="btn primary">Export PNG</button>
+      </div>
+    </header>
+
+    <!-- Canvas stage -->
+    <main id="stage">
+      <div id="canvas-wrap">
+        <canvas id="view"></canvas>
+      </div>
+      <div id="cursor-ring"></div>
+    </main>
+
+    <!-- Right layers panel -->
+    <aside id="layers-panel">
+      <div class="panel-head">
+        <span>Layers</span>
+        <div class="panel-actions">
+          <button id="btn-add-layer" title="Add layer">＋</button>
+          <button id="btn-del-layer" title="Delete layer">🗑</button>
+        </div>
+      </div>
+      <div class="layer-opacity">
+        <label>Layer opacity <span id="layer-op-val">100</span>%</label>
+        <input type="range" id="layer-opacity" min="0" max="100" value="100" />
+      </div>
+      <div class="layer-blend">
+        <label>Blend</label>
+        <select id="blend-mode">
+          <option value="source-over">Normal</option>
+          <option value="multiply">Multiply</option>
+          <option value="screen">Screen</option>
+          <option value="overlay">Overlay</option>
+          <option value="darken">Darken</option>
+          <option value="lighten">Lighten</option>
+          <option value="color-dodge">Color Dodge</option>
+          <option value="difference">Difference</option>
+          <option value="hue">Hue</option>
+          <option value="color">Color</option>
+        </select>
+      </div>
+      <ul id="layer-list"></ul>
+    </aside>
+
+    <footer id="statusbar">
+      <span id="status-tool">Brush</span>
+      <span id="status-pos">0, 0</span>
+      <span id="status-doc">—</span>
+    </footer>
+  </div>
+
+  <!-- New canvas dialog -->
+  <dialog id="new-dialog">
+    <form method="dialog">
+      <h3>New Canvas</h3>
+      <div class="row"><label>Width</label><input type="number" id="nc-w" value="1920" min="1" max="8192" /></div>
+      <div class="row"><label>Height</label><input type="number" id="nc-h" value="1080" min="1" max="8192" /></div>
+      <div class="row"><label>Background</label>
+        <select id="nc-bg">
+          <option value="#ffffff">White</option>
+          <option value="transparent">Transparent</option>
+          <option value="#1e1e22">Dark</option>
+        </select>
+      </div>
+      <div class="dialog-actions">
+        <button value="cancel" class="btn">Cancel</button>
+        <button value="ok" class="btn primary" id="nc-create">Create</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script type="module" src="renderer/app.js"></script>
+</body>
+</html>
