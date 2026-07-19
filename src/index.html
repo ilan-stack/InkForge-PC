@@ -15,6 +15,10 @@
       <button class="tool" data-tool="eraser" title="Eraser (E)">⌫</button>
       <button class="tool" data-tool="fill" title="Fill (G)">🪣</button>
       <button class="tool" data-tool="eyedropper" title="Eyedropper (I)">💧</button>
+      <button class="tool" data-tool="line" title="Line (L)">╱</button>
+      <button class="tool" data-tool="rect" title="Rectangle (R)">▭</button>
+      <button class="tool" data-tool="ellipse" title="Ellipse (O)">◯</button>
+      <button class="tool" data-tool="text" title="Text (T)">T</button>
       <button class="tool" data-tool="move" title="Move Layer (V)">✥</button>
       <button class="tool" data-tool="pan" title="Pan (Space)">✋</button>
       <div class="rail-spacer"></div>
@@ -116,6 +120,29 @@
       <div class="dialog-actions">
         <button value="cancel" class="btn">Cancel</button>
         <button value="ok" class="btn primary" id="nc-create">Create</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Text tool dialog -->
+  <dialog id="text-dialog">
+    <form method="dialog">
+      <h3>Add Text</h3>
+      <div class="row full"><textarea id="tx-text" rows="3" placeholder="Type your text…"></textarea></div>
+      <div class="row"><label>Font</label>
+        <select id="tx-font">
+          <option value="-apple-system, 'Segoe UI', sans-serif">Sans</option>
+          <option value="Georgia, 'Times New Roman', serif">Serif</option>
+          <option value="Menlo, Consolas, monospace">Mono</option>
+          <option value="'Comic Sans MS', cursive">Comic</option>
+          <option value="Impact, sans-serif">Impact</option>
+        </select>
+      </div>
+      <div class="row"><label>Size</label><input type="number" id="tx-size" value="72" min="6" max="800" /></div>
+      <div class="row"><label>Bold</label><input type="checkbox" id="tx-bold" /></div>
+      <div class="dialog-actions">
+        <button value="cancel" class="btn">Cancel</button>
+        <button value="ok" class="btn primary" id="tx-ok">Add</button>
       </div>
     </form>
   </dialog>

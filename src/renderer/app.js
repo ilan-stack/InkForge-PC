@@ -228,13 +228,67 @@ let panStart = null;
 let moving = false;
 let moveStart = null;
 let spaceDown = false;
+let shape = null;            // { start:{x,y}, snap } while dragging a shape
+let pendingTextPos = null;   // doc-space anchor for the text dialog
 
 function setTool(t) {
   tool = t;
   document.querySelectorAll('.tool[data-tool]').forEach(b =>
     b.classList.toggle('active', b.dataset.tool === t));
   $('#status-tool').textContent = t[0].toUpperCase() + t.slice(1);
-  view.style.cursor = (t === 'pan') ? 'grab' : 'none';
+  const crosshair = ['line', 'rect', 'ellipse', 'text'].includes(t);
+  view.style.cursor = (t === 'pan') ? 'grab' : (crosshair ? 'crosshair' : 'none');
+}
+
+// Draw a shape preview/commit onto a layer context (doc coords)
+function drawShape(ctx, kind, x0, y0, x1, y1, shift) {
+  ctx.save();
+  ctx.strokeStyle = brush.color;
+  ctx.lineWidth = Math.max(1, brush.size);
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.globalAlpha = brush.opacity;
+  if (kind === 'line') {
+    if (shift) {
+      const dx = x1 - x0, dy = y1 - y0;
+      const ang = Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) * (Math.PI / 4);
+      const len = Math.hypot(dx, dy);
+      x1 = x0 + Math.cos(ang) * len; y1 = y0 + Math.sin(ang) * len;
+    }
+    ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+  } else if (kind === 'rect') {
+    let w = x1 - x0, h = y1 - y0;
+    if (shift) { const s = Math.max(Math.abs(w), Math.abs(h)); w = (Math.sign(w) || 1) * s; h = (Math.sign(h) || 1) * s; }
+    ctx.strokeRect(x0, y0, w, h);
+  } else if (kind === 'ellipse') {
+    let rx = Math.abs(x1 - x0) / 2, ry = Math.abs(y1 - y0) / 2;
+    if (shift) { const r = Math.max(rx, ry); rx = r; ry = r; }
+    const cx = x0 + (Math.sign(x1 - x0) || 1) * rx, cy = y0 + (Math.sign(y1 - y0) || 1) * ry;
+    ctx.beginPath(); ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2); ctx.stroke();
+  }
+  ctx.restore();
+}
+
+// Stamp multi-line text onto the active layer at the pending anchor
+function commitText() {
+  const txt = $('#tx-text').value;
+  if (!txt || !pendingTextPos) { pendingTextPos = null; return; }
+  history.push(doc.layer);
+  const ctx = doc.layer.ctx;
+  const size = clamp(+$('#tx-size').value || 72, 6, 800);
+  const font = $('#tx-font').value;
+  const bold = $('#tx-bold').checked ? 'bold ' : '';
+  ctx.save();
+  ctx.fillStyle = brush.color;
+  ctx.globalAlpha = brush.opacity;
+  ctx.textBaseline = 'top';
+  ctx.font = `${bold}${size}px ${font}`;
+  txt.split('\n').forEach((line, i) =>
+    ctx.fillText(line, pendingTextPos.x, pendingTextPos.y + i * size * 1.2));
+  ctx.restore();
+  composite(); updateThumb(doc.active);
+  $('#tx-text').value = '';
+  pendingTextPos = null;
 }
 
 view.addEventListener('pointerdown', (e) => {
@@ -264,6 +318,16 @@ view.addEventListener('pointerdown', (e) => {
     moving = true; moveStart = { x: p.x, y: p.y, snap: doc.layer.ctx.getImageData(0,0,doc.width,doc.height) };
     return;
   }
+  if (tool === 'line' || tool === 'rect' || tool === 'ellipse') {
+    history.push(doc.layer);
+    shape = { start: { x: p.x, y: p.y }, snap: doc.layer.ctx.getImageData(0, 0, doc.width, doc.height) };
+    return;
+  }
+  if (tool === 'text') {
+    pendingTextPos = { x: p.x, y: p.y };
+    $('#text-dialog').showModal();
+    return;
+  }
   // brush / eraser
   history.push(doc.layer);
   stroke = new Stroke(tool);
@@ -286,6 +350,12 @@ view.addEventListener('pointermove', (e) => {
     ctx.putImageData(moveStart.snap, dx, dy);
     composite(); return;
   }
+  if (shape) {
+    const ctx = doc.layer.ctx;
+    ctx.putImageData(shape.snap, 0, 0);
+    drawShape(ctx, tool, shape.start.x, shape.start.y, p.x, p.y, e.shiftKey);
+    composite(); return;
+  }
   if (stroke) {
     const pressure = (e.pointerType === 'pen') ? e.pressure : 1;
     // coalesced events give smoother, higher-rate strokes;
@@ -304,6 +374,7 @@ view.addEventListener('pointermove', (e) => {
 function endPointer() {
   if (stroke) { stroke.end(); stroke = null; updateThumb(doc.active); }
   if (moving) { moving = false; updateThumb(doc.active); }
+  if (shape) { shape = null; updateThumb(doc.active); }
   if (panning) { panning = false; view.style.cursor = (tool === 'pan') ? 'grab' : 'none'; }
 }
 view.addEventListener('pointerup', endPointer);
@@ -326,9 +397,7 @@ stage.addEventListener('wheel', (e) => {
 // Cursor ring shows brush size
 function updateCursorRing(clientX, clientY) {
   const ring = $('#cursor-ring');
-  if (tool === 'pan' || tool === 'move' || tool === 'fill' || tool === 'eyedropper') {
-    ring.style.display = 'none'; return;
-  }
+  if (!['brush', 'eraser'].includes(tool)) { ring.style.display = 'none'; return; }
   const r = brush.size * cam.scale;
   ring.style.display = 'block';
   ring.style.width = ring.style.height = r + 'px';
@@ -451,6 +520,10 @@ function bindUI() {
   $('#btn-fit').addEventListener('click', fitToScreen);
   $('#btn-export').addEventListener('click', exportPng);
   $('#btn-new').addEventListener('click', () => $('#new-dialog').showModal());
+  $('#tx-ok').addEventListener('click', () => setTimeout(commitText, 0));
+  $('#text-dialog').addEventListener('close', () => {
+    if ($('#text-dialog').returnValue !== 'ok') { pendingTextPos = null; $('#tx-text').value = ''; }
+  });
 
   $('#nc-create').addEventListener('click', (e) => {
     // let the dialog close, then read values
@@ -463,14 +536,15 @@ function bindUI() {
 
   // keyboard
   window.addEventListener('keydown', (e) => {
-    if (e.target.tagName === 'INPUT') return;
+    if (/INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
     if (e.code === 'Space') { spaceDown = true; view.style.cursor = 'grab'; e.preventDefault(); return; }
     const mod = e.ctrlKey || e.metaKey;
     if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? history.redo() : history.undo(); return; }
     if (mod && e.key.toLowerCase() === 'e') { e.preventDefault(); exportPng(); return; }
     if (mod && e.key.toLowerCase() === 'n') { e.preventDefault(); $('#new-dialog').showModal(); return; }
     if (mod && e.key === '0') { e.preventDefault(); fitToScreen(); return; }
-    const map = { b: 'brush', e: 'eraser', g: 'fill', i: 'eyedropper', v: 'move', h: 'pan' };
+    const map = { b: 'brush', e: 'eraser', g: 'fill', i: 'eyedropper', v: 'move', h: 'pan',
+                  l: 'line', r: 'rect', o: 'ellipse', t: 'text' };
     if (!mod && map[e.key.toLowerCase()]) setTool(map[e.key.toLowerCase()]);
     if (e.key === '[') { brush.size = clamp(brush.size - 2, 1, 400); $('#size').value = brush.size; $('#size-val').textContent = brush.size; }
     if (e.key === ']') { brush.size = clamp(brush.size + 2, 1, 400); $('#size').value = brush.size; $('#size-val').textContent = brush.size; }

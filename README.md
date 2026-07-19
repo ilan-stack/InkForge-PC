@@ -4,13 +4,16 @@ A cross-platform rebuild of the InkForge drawing app, running on **Windows, macO
 
 This is a ground-up port of the macOS-native (AppKit/CoreGraphics) InkForge, which cannot run on Windows. The drawing engine here is rebuilt on the web canvas stack so it produces a real Windows `.exe`.
 
-## Features (v0.1)
+## Features
 - Layered canvas engine (add / delete / reorder, per-layer opacity, blend modes, visibility)
-- Tools: Brush, Eraser, Fill bucket, Eyedropper, Move layer, Pan
+- Tools: Brush, Eraser, Fill bucket, Eyedropper, Line, Rectangle, Ellipse, Text, Move layer, Pan
 - Pressure-sensitive brush (works with pen tablets via Pointer Events), soft/hard tips, spacing-based stamping
+- Shapes with live preview and Shift-constrain (square / circle / 45° lines)
+- Multi-line text tool (font, size, bold, brush color)
 - Pan (space-drag / middle-mouse) and cursor-anchored zoom (wheel)
 - Undo / redo, New canvas dialog, PNG export via native save dialog
 - Neumorphic dark UI in the spirit of the original
+- `touch-action: none` throughout so pen/touch input never gets hijacked as a gesture
 
 ## Run in development
 ```bash
