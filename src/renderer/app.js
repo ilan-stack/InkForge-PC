@@ -1187,7 +1187,7 @@ function initKnob(name, get, apply, min, max, step) {
 }
 
 // ---------------------------------------------------------------- Color system
-const WHEEL = { cx: 110, cy: 110, rOuter: 106, rInner: 84, sqX: 56, sqY: 56, sq: 108 };
+const WHEEL = { cx: 92, cy: 92, rOuter: 89, rInner: 70, sqX: 48, sqY: 48, sq: 88 };
 let hsb = { h: 0, s: 0, v: 10 };
 let harmMode = 'analog';
 let wheelMode = null;
